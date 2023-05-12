@@ -1,0 +1,6 @@
+{
+  "bos_token": "<start>",
+  "eos_token": "<end>",
+  "pad_token": "<pad>",
+  "unk_token": "<pad>"
+}
