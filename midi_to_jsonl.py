@@ -1,26 +1,107 @@
 import argparse
+import functools
 import io
+import json
 import mido
 import multiprocessing
+import os
+from typing import Iterable, Callable, Tuple
+
+import tarfile
+import zipfile
 
 from util import VocabConfig, VocabUtils
 
 
-def convert_midi_to_str(cfg: VocabConfig, data: bytes) -> str:
+def convert_midi_to_str(cfg: VocabConfig, data: Tuple[str, bytes]) -> Tuple[str, str]:
+    filename, filedata = data
     try:
-        mid = mido.MidiFile(file=io.BytesIO(data))
+        mid = mido.MidiFile(file=io.BytesIO(filedata))
     except:
         return None
+    utils = VocabUtils(cfg)
 
-    pass
+    if len(mid.tracks) > 1:
+        mid.tracks = [mido.merge_tracks(mid.tracks)]
+
+    channel_programs = {0: 0 for _ in range(16)}
+    delta_time = 0
+    pedal_on = False
+    pedal_events = {}
+
+    output = ""
+
+    for msg in mid.tracks[0]:
+        delta_time += msg.time
+
+        if msg.is_meta:
+            continue
+
+        t = msg.type
+        if t == "program_change":
+            channel_programs[msg.channel] = msg.program
+        elif t == "note_on":
+            output += utils.data_to_wait_tokens(delta_time)
+            output += utils.data_to_note_token(
+                channel_programs[msg.channel],
+                msg.velocity,
+                msg.note,
+            )
+        elif t == "note_off":
+            if pedal_on:
+                pedal_events[(msg.channel, msg.note)] = True
+            else:
+                output += utils.data_to_wait_tokens(delta_time)
+                output += utils.data_to_note_token(
+                    channel_programs[msg.channel],
+                    0,
+                    msg.note,
+                )
+        elif t == "control_change":
+            if msg.control == 64:
+                pedal_on = msg.value >= 64
+                if not pedal_on:
+                    output += utils.data_to_wait_tokens(delta_time)
+                    for (channel, note) in pedal_events:
+                        output += utils.data_to_note_token(
+                            channel_programs[channel],
+                            0,
+                            note,
+                        )
+                    pedal_events = {}
+        else:
+            pass
+    return filename, output
 
 
 def midi_to_jsonl(cfg: VocabConfig, path: str, output: str, workers: int = 1):
     pool = multiprocessing.Pool(workers)
+    file_generator: Callable[[], Iterable[Tuple[str, bytes]]] = None
     if path.endswith(".tar.gz"):
-        pass
-    if path.endswith(".zip"):
-        pass
+        def file_generator():
+            with tarfile.open(path, "r:gz") as tar:
+                for member in tar.getmembers():
+                    if member.isfile():
+                        yield (member.name, tar.extractfile(member).read())
+    elif path.endswith(".zip"):
+        def file_generator():
+            with zipfile.ZipFile(path, "r") as zip:
+                for member in zip.infolist():
+                    if not member.is_dir():
+                        yield (member.filename, zip.read(member.filename))
+    elif path.endswith((".mid", ".midi")):
+        def file_generator():
+            with open(path, "rb") as f:
+                yield (os.path.basename(path), f.read())
+    else:
+        raise ValueError(f"Invalid file type: {path}")
+
+    # write results to jsonl file
+    with open(output, "w") as f:
+        for (result, filename) in pool.map(functools.partial(convert_midi_to_str, cfg), file_generator(), chunksize=32):
+            if result is not None:
+                json.dump({"text": result, "file": filename}, f)
+                f.write("\n")
 
 
 if __name__ == "__main__":

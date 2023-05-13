@@ -9,11 +9,6 @@ from util import VocabConfig, VocabUtils
 
 
 def build_tokenizer(cfg: VocabConfig):
-    if cfg.velocity_events % cfg.velocity_bins != 0:
-        raise ValueError("velocity_max must be exactly divisible by velocity_bins")
-    if cfg.max_wait_time % cfg.wait_events != 0:
-        raise ValueError("max_wait_time must be exactly divisible by wait_events")
-
     utils = VocabUtils(cfg)
 
     added_tokens = [
