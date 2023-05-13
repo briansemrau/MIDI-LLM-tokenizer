@@ -1,9 +1,26 @@
 import argparse
+import io
 import mido
+import multiprocessing
+
+from util import VocabConfig, VocabUtils
 
 
-def midi_to_jsonl():
+def convert_midi_to_str(cfg: VocabConfig, data: bytes) -> str:
+    try:
+        mid = mido.MidiFile(file=io.BytesIO(data))
+    except:
+        return None
+
     pass
+
+
+def midi_to_jsonl(cfg: VocabConfig, path: str, output: str, workers: int = 1):
+    pool = multiprocessing.Pool(workers)
+    if path.endswith(".tar.gz"):
+        pass
+    if path.endswith(".zip"):
+        pass
 
 
 if __name__ == "__main__":
@@ -21,10 +38,10 @@ if __name__ == "__main__":
         help="Path to output JSONL file",
     )
     p.add_argument(
-        "--instrument_bin_config",
+        "--vocab_config",
         type=str,
-        default="./instrument_binning.json",
-        help="Path to instrument binning config file",
+        default="./vocab_config.json",
+        help="Path to vocab config file",
     )
     p.add_argument(
         "--workers",
@@ -32,3 +49,9 @@ if __name__ == "__main__":
         default=1,
         help="Number of workers to use for parallel processing",
     )
+
+    args = p.parse_args()
+
+    cfg = VocabConfig.from_json(args.vocab_config)
+
+    midi_to_jsonl(cfg, args.path, args.output, args.workers)
