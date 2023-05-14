@@ -27,6 +27,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 dataset_path = "/mnt/e/datasets/music/lakh_midi_v0.1/lmd_full.tar.gz"
 dataset_name = "Lakh MIDI v0.1"
+dataset_size = 176581
 
 def file_generator(max: int):
     count = 0
@@ -58,7 +59,7 @@ def map_dataset(func, count: int):
 
 #%%
 # Count occurrences of each instrument
-sample_size = 5000
+sample_size = dataset_size
 
 instr_occ_sum: Dict[int, int] = {}
 instr_occ_tuples = []
@@ -121,6 +122,9 @@ plt.figure(figsize=(10, 10))
 plt.title(f"Instrument Co-occurrences\n{dataset_name}, n={sample_size:,}")
 plt.xlabel("MIDI Instrument")
 plt.ylabel("MIDI Instrument")
+plt.xticks(ticks=np.arange(0-0.5, 128-0.5, 8), labels=np.arange(0, 128, 8))
+plt.yticks(ticks=np.arange(0-0.5, 128-0.5, 8), labels=np.arange(0, 128, 8))
+plt.grid(which='major', axis='both', color='blue', linestyle='-', linewidth=0.5, alpha=0.2)
 cmap = mpl.cm.Blues.copy()
 cmap.set_under("white")
 cmap.set_over("purple")
@@ -130,19 +134,24 @@ plt.show()
 
 #%%
 # Count occurrences of control change
-sample_size = 5000
+sample_size = 15000#dataset_size
 
 control_changes: Dict[Tuple[int, int], int] = {}
+control_changes_file_count: Dict[int, int] = {}
 def count_file_control_changes(mid):
     keys = []
+    controls_used = set()
     for track in mid.tracks:
         for msg in track:
             if msg.type == "control_change":
                 keys.append((msg.control, msg.value))
-    return keys
-for keys in map_dataset(count_file_control_changes, sample_size):
+                controls_used.add(msg.control)
+    return keys, controls_used
+for keys, controls_used in map_dataset(count_file_control_changes, sample_size):
     for key in keys:
         control_changes[key] = control_changes.get(key, 0) + 1
+    for control in controls_used:
+        control_changes_file_count[control] = control_changes_file_count.get(control, 0) + 1
 
 control_change_labels = json.load(open("control_changes.json"))
 
@@ -153,7 +162,7 @@ for k, v in control_changes.items():
 control_changes_labeled = {control_change_labels[str(k)]: v for k, v in control_changes_grouped.items()}
 sorted_control_changes_top = dict(sorted(control_changes_labeled.items(), key=lambda item: item[1], reverse=True)[:15])
 plt.figure(figsize=(10, 5))
-plt.title(f"Most Common Control Changes\n{dataset_name}, n={sample_size:,}")
+plt.title(f"Most Frequent Control Changes\n{dataset_name}, n={sample_size:,}")
 plt.xlabel("Control Change")
 plt.ylabel("Count")
 plt.xticks(rotation=45, ha="right")
@@ -174,10 +183,21 @@ cmap.set_over("purple")
 plt.imshow(control_changes_array, cmap=cmap, vmin=1, vmax=np.quantile(control_changes_array, 0.999))
 plt.show()
 
+# show control changes file presence (top 15)
+control_changes_file_count_labeled = {control_change_labels[str(k)]: v for k, v in control_changes_file_count.items()}
+sorted_control_changes_file_count_top = dict(sorted(control_changes_file_count_labeled.items(), key=lambda item: item[1], reverse=True)[:15])
+plt.figure(figsize=(10, 5))
+plt.title(f"Control Changes File Presence\n{dataset_name}, n={sample_size:,}")
+plt.xlabel("Control Change")
+plt.ylabel("Count")
+plt.xticks(rotation=45, ha="right")
+plt.bar(sorted_control_changes_file_count_top.keys(), sorted_control_changes_file_count_top.values())
+plt.show()
+
 
 #%%
 # Count occurrences of each note per instrument
-sample_size = 5000
+sample_size = 176581
 
 note_occ_sum: Dict[Tuple[int, int], int] = {}
 note_occ_tuples = []
@@ -207,8 +227,8 @@ for key, value in note_occ_sum.items():
 # normalize by instrument
 note_occ_array_norm = note_occ_array / np.max(note_occ_array, axis=0)
 plt.figure(figsize=(10, 10))
-plt.title(f"Note Occurrences Heatmap\n{dataset_name}, n={sample_size:,}")
-plt.ylabel("Note (normalized by instrument)")
+plt.title(f"Note Occurrences Heatmap\n(normalized by instrument)\n{dataset_name}, n={sample_size:,}")
+plt.ylabel("Note")
 plt.xlabel("MIDI Instrument")
 plt.xticks(ticks=np.arange(0-0.5, 128-0.5, 8), labels=np.arange(0, 128, 8))
 plt.yticks(ticks=np.arange(0-0.5, 128-0.5, 12), labels=np.arange(0, 128, 12))
@@ -219,4 +239,32 @@ cmap = mpl.cm.Blues.copy()
 cmap.set_under("white")
 cmap.set_over("purple")
 plt.imshow(note_occ_array_norm, origin='lower', cmap=cmap, vmin=0.0000000001, vmax=np.quantile(note_occ_array_norm, 0.9999))
+plt.show()
+
+
+#%%
+# Count meta events
+sample_size = 5000
+
+meta_events: Dict[str, int] = {}
+def count_file_meta_events(mid):
+    keys = []
+    for track in mid.tracks:
+        for msg in track:
+            msg: mido.Message
+            if msg.is_meta:
+                keys.append(msg.type)
+    return keys
+for keys in map_dataset(count_file_meta_events, sample_size):
+    for key in keys:
+        meta_events[key] = meta_events.get(key, 0) + 1
+
+# sort by most common, plot top with labels
+sorted_meta_events_top = dict(sorted(meta_events.items(), key=lambda item: item[1], reverse=True)[:15])
+plt.figure(figsize=(10, 5))
+plt.title(f"Most Frequent Meta Events\n{dataset_name}, n={sample_size:,}")
+plt.xlabel("Meta Event")
+plt.ylabel("Count")
+plt.xticks(rotation=45, ha="right")
+plt.bar(sorted_meta_events_top.keys(), sorted_meta_events_top.values())
 plt.show()
