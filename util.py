@@ -2,6 +2,7 @@ import json
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import List, Dict
+from math import ceil, floor
 
 
 NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
@@ -57,16 +58,15 @@ class VocabUtils:
     def format_wait_token(self, wait: int) -> str:
         return f"T{wait} "
 
-    def velocity_to_bin(self, velocity: int) -> int:
-        return velocity // self.cfg.velocity_bins
+    def velocity_to_bin(self, velocity: float) -> int:
+        return ceil(velocity / self.cfg.velocity_bins)
 
     def bin_to_velocity(self, bin: int) -> int:
         return bin * self.cfg.velocity_bins
 
-    @lru_cache(maxsize=128)
-    def delta_to_wait_ids(self, delta_ms: int) -> List[int]:
+    def delta_to_wait_ids(self, delta_ms: float) -> List[int]:
         def roundi(f: float):
-            return int(f + 0.5)
+            return ceil(f - 0.5)
 
         max_wait_ms = self.cfg.max_wait_time
         div = max_wait_ms / self.cfg.wait_events
@@ -76,7 +76,7 @@ class VocabUtils:
         if delta_ms > max_wait_ms * 10:
             delta_ms = max_wait_ms * 10  # truncate time
 
-        for _ in range(delta_ms // max_wait_ms):
+        for _ in range(floor(delta_ms / max_wait_ms)):
             yield roundi(max_wait_ms / div)
         leftover_time_shift = roundi((delta_ms % max_wait_ms) / div)
         if leftover_time_shift > 0:
@@ -85,5 +85,5 @@ class VocabUtils:
     def data_to_note_token(self, program: int, velocity: int, note: int) -> str:
         return self.format_note_token(self.cfg.program_to_bin[program], self.velocity_to_bin(velocity), note)
     
-    def data_to_wait_tokens(self, delta_ms: int) -> str:
+    def data_to_wait_tokens(self, delta_ms: float) -> str:
         return "".join([self.format_wait_token(i) for i in self.delta_to_wait_ids(delta_ms)])
