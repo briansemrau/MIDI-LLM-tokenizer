@@ -52,10 +52,10 @@ class VocabConfig:
         self._short_instrument_names_str_to_int = {name: int(i) for i, name in enumerate(self.short_instr_bin_names)}
 
     def validate(self):
-        if self.velocity_events % self.velocity_bins != 0:
-            raise ValueError("velocity_max must be exactly divisible by velocity_bins")
         if self.max_wait_time % self.wait_events != 0:
             raise ValueError("max_wait_time must be exactly divisible by wait_events")
+        if self.velocity_bins < 2:
+            raise ValueError("velocity_bins must be at least 2")
         if len(self.bin_instrument_names) > 16:
             raise ValueError("bin_instruments must have at most 16 values")
 
@@ -76,13 +76,15 @@ class VocabUtils:
 
     @lru_cache(maxsize=128)
     def format_note_token(self, instrument_bin: int, note: int, velocity_bin: int) -> str:
-        return f"{self.cfg.short_instr_bin_names[instrument_bin]}:{note}:{velocity_bin} "
+        return f"{self.cfg.short_instr_bin_names[instrument_bin]}:{note:x}:{velocity_bin:x} "
 
     def velocity_to_bin(self, velocity: float) -> int:
-        return ceil(velocity / self.cfg.velocity_bins)
+        binsize = self.cfg.velocity_events / (self.cfg.velocity_bins - 1)
+        return ceil(velocity / binsize)
 
     def bin_to_velocity(self, bin: int) -> int:
-        return bin * self.cfg.velocity_bins
+        binsize = self.cfg.velocity_events / (self.cfg.velocity_bins - 1)
+        return max(0, ceil(bin * binsize - 1))
 
     def delta_to_wait_ids(self, delta_ms: float) -> List[int]:
         def roundi(f: float):
@@ -120,8 +122,8 @@ class VocabUtils:
     def note_token_to_data(self, token: str) -> Tuple[int, int, int]:
         instr_str, note_str, velocity_str = token.strip().split(":")
         instr_bin = self.cfg._short_instrument_names_str_to_int[instr_str]
-        note = int(note_str)
-        velocity = self.bin_to_velocity(int(velocity_str))
+        note = int(note_str, base=16)
+        velocity = self.bin_to_velocity(int(velocity_str, base=16))
         return instr_bin, note, velocity
 
 

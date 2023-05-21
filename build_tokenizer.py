@@ -19,7 +19,7 @@ def build_tokenizer(cfg: VocabConfig):
     vocab = []
     vocab.extend([utils.format_wait_token(i) for i in range(cfg.wait_events)])
     for i in range(len(cfg.short_instr_bin_names)):
-        vocab.extend([utils.format_note_token(i, v, n) for n in range(cfg.note_events) for v in range(cfg.velocity_bins)])
+        vocab.extend([utils.format_note_token(i, n, v) for n in range(cfg.note_events) for v in range(cfg.velocity_bins)])
 
     tokenizer = Tokenizer(WordLevel(vocab={x: i for i, x in enumerate(vocab)}, unk_token="<pad>"))
     tokenizer.add_tokens(added_tokens)

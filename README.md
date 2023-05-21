@@ -14,10 +14,21 @@ For converting jsonl files to binidx format for training, see https://github.com
 # Vocabulary
 
 MIDI files contain a lot of data, and only some of it can be reasonably learned by a language model.
-Inspired by MuseNet and Oore et. al, 2018, we have two main types of tokens:
-- Wait tokens for timing (125 of them)
-- Combined note+velocity+instrument tokens (128 notes * 16 quantized velocity * 16 binned instruments = 32768)
-And also pad/start/end tokens.
+Inspired by OpenAI MuseNet and Oore et. al, 2018, we have two main types of tokens:
+- Wait tokens for timing (125 of them, representing real time)
+- Combined note+velocity+instrument tokens (128 notes * 16 quantized velocity * 16 binned instruments = 32768 tokens)
+- plus pad/start/end tokens.
+
+Notes and quantized velocities are encoded as hex, while instruments are encoded as the shortest unique string.
+
+We (knowingly) discard the following information:
+- Panning
+- Pitch bend
+- Modulation
+- Key signature
+- Time signature
+- Track names
+- Instrument names (we assume the standard GM instruments)
 
 # Scripts
 
@@ -32,12 +43,12 @@ python ./build_tokenizer.py
 Converts a directory or archive of mid/midi files into a jsonl file of note sequences.
 
 ```sh
-python ./midi_to_jsonl.py --path ~/lmd_full.tar.gz --output lmd_full.jsonl
+python ./midi_to_jsonl.py --path ~/lmd_full.tar.gz --output ~/lmd_full.jsonl
 ```
 
 ## str_to_midi.py
 Converts a note sequence in string format into a .mid file.
 
 ```sh
-python ./str_to_midi.py "<start>p:15:C4 T10 p:0:C4 <end>" --output test.mid
+python ./str_to_midi.py "<start>p:3c:f T10 p:3c:0 <end>" --output test.mid
 ```
