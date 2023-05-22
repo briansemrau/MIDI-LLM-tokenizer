@@ -3,6 +3,8 @@ import os
 
 from tokenizers import Tokenizer
 from tokenizers.models import WordLevel
+from tokenizers.pre_tokenizers import WhitespaceSplit
+from tokenizers.normalizers import Lowercase
 from transformers import PreTrainedTokenizerFast
 
 from midiutil import VocabConfig, VocabUtils
@@ -11,18 +13,20 @@ from midiutil import VocabConfig, VocabUtils
 def build_tokenizer(cfg: VocabConfig):
     utils = VocabUtils(cfg)
 
-    added_tokens = [
+    special_tokens = [
         "<pad>",
         "<start>",
         "<end>",
     ]
-    vocab = []
+    vocab = [*special_tokens]
     vocab.extend([utils.format_wait_token(i) for i in range(cfg.wait_events)])
     for i in range(len(cfg.short_instr_bin_names)):
         vocab.extend([utils.format_note_token(i, n, v) for n in range(cfg.note_events) for v in range(cfg.velocity_bins)])
 
     tokenizer = Tokenizer(WordLevel(vocab={x: i for i, x in enumerate(vocab)}, unk_token="<pad>"))
-    tokenizer.add_tokens(added_tokens)
+    tokenizer.add_special_tokens(special_tokens)
+    tokenizer.pre_tokenizer = WhitespaceSplit()
+    tokenizer.normalizer = Lowercase()
     tokenizer.save("tmp_tokenizer.json")
     
     fast_tokenizer = PreTrainedTokenizerFast(

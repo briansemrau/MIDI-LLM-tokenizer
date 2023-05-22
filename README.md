@@ -9,7 +9,7 @@ Expected workflow would be:
 4. sample LLM
 5. [convert text into midi](#str_to_midipy)
 
-For converting jsonl files to binidx format for training, see https://github.com/Abel2076/json2binidx_tool
+For converting jsonl files to binidx format for training, see https://github.com/Abel2076/json2binidx_tool or https://github.com/EleutherAI/gpt-neox
 
 # Vocabulary
 
@@ -50,5 +50,5 @@ python ./midi_to_jsonl.py --path ~/lmd_full.tar.gz --output ~/lmd_full.jsonl
 Converts a note sequence in string format into a .mid file.
 
 ```sh
-python ./str_to_midi.py "<start>p:3c:f T10 p:3c:0 <end>" --output test.mid
+python ./str_to_midi.py "<start> p:3c:f t10 p:3e:f t10 p:40:f t64 p:3c:0 p:3e:0 p:40:0 <end>" --output test.mid
 ```

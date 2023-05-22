@@ -9,6 +9,7 @@ import zipfile
 from typing import Callable, Iterable, Tuple
 
 import mido
+from tqdm import tqdm
 
 import midiutil
 from midiutil import VocabConfig, VocabUtils
@@ -19,7 +20,11 @@ def convert_midi_bytes_to_str(cfg: VocabConfig, data: Tuple[str, bytes]) -> Tupl
     try:
         mid = mido.MidiFile(file=io.BytesIO(filedata))
     except:
-        return None
+        return filename, None
+    if mid.type not in (0, 1, 2):
+        return filename, None
+    if len(mid.tracks) == 0:
+        return filename, None
     return filename, midiutil.convert_midi_to_str(cfg, mid)
 
 
@@ -30,13 +35,13 @@ def midi_to_jsonl(cfg: VocabConfig, path: str, output: str, workers: int = 1):
         def file_generator():
             with tarfile.open(path, "r:gz") as tar:
                 for member in tar:
-                    if member.isfile():
+                    if member.isfile() and member.name.endswith((".mid", ".midi")):
                         yield (member.name, tar.extractfile(member).read())
     elif path.endswith(".zip"):
         def file_generator():
             with zipfile.ZipFile(path, "r") as zip:
                 for member in zip.infolist():
-                    if not member.is_dir():
+                    if not member.is_dir() and member.filename.endswith((".mid", ".midi")):
                         yield (member.filename, zip.read(member.filename))
     elif path.endswith((".mid", ".midi")):
         def file_generator():
@@ -45,12 +50,23 @@ def midi_to_jsonl(cfg: VocabConfig, path: str, output: str, workers: int = 1):
     else:
         raise ValueError(f"Invalid file type: {path}")
 
+    failed_file_count = 0
+    total_file_count = 0
+
     # write results to jsonl file
-    with open(output, "w") as f:
-        for (filename, result) in pool.map(functools.partial(convert_midi_bytes_to_str, cfg), file_generator(), chunksize=32):
+    with open(output, "w") as f, open(output + ".failed", "w") as f_failed:
+        for (filename, result) in tqdm(pool.imap(functools.partial(convert_midi_bytes_to_str, cfg), file_generator(), chunksize=48)):
+            total_file_count += 1
             if result is not None:
                 json.dump({"file": filename, "text": result}, f)
                 f.write("\n")
+            else:
+                f_failed.write(filename + "\n")
+                failed_file_count += 1
+    
+    print(f"Failed to convert {failed_file_count} files ({failed_file_count / total_file_count * 100:.2f}%)")
+    if failed_file_count == 0:
+        os.remove(output + ".failed")
 
 
 if __name__ == "__main__":

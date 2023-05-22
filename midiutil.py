@@ -2,7 +2,7 @@ import json
 from dataclasses import dataclass
 from functools import lru_cache
 from math import ceil, floor
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 import mido
 
@@ -72,11 +72,11 @@ class VocabUtils:
     
     @lru_cache(maxsize=128)
     def format_wait_token(self, wait: int) -> str:
-        return f"T{wait} "
+        return f"t{wait}"
 
     @lru_cache(maxsize=128)
     def format_note_token(self, instrument_bin: int, note: int, velocity_bin: int) -> str:
-        return f"{self.cfg.short_instr_bin_names[instrument_bin]}:{note:x}:{velocity_bin:x} "
+        return f"{self.cfg.short_instr_bin_names[instrument_bin]}:{note:x}:{velocity_bin:x}"
 
     def velocity_to_bin(self, velocity: float) -> int:
         binsize = self.cfg.velocity_events / (self.cfg.velocity_bins - 1)
@@ -112,9 +112,10 @@ class VocabUtils:
         if instrument_bin != -1:
             return self.format_note_token(instrument_bin, note, self.velocity_to_bin(velocity))
         return ""
-    
-    def data_to_wait_tokens(self, delta_ms: float) -> str:
-        return "".join([self.format_wait_token(i) for i in self.delta_to_wait_ids(delta_ms)])
+
+    def data_to_wait_tokens(self, delta_ms: float) -> List[str]:
+        for i in self.delta_to_wait_ids(delta_ms):
+            yield self.format_wait_token(i)
     
     def wait_token_to_delta(self, token: str) -> float:
         return self.cfg.max_wait_time / self.cfg.wait_events * int(token[1:])
@@ -134,6 +135,10 @@ def mix_volume(velocity: int, volume: int, expression: int) -> float:
 def convert_midi_to_str(cfg: VocabConfig, mid: mido.MidiFile) -> str:
     utils = VocabUtils(cfg)
 
+    # filter out unknown meta messages before merge (https://github.com/mido/mido/pull/286)
+    for i in range(len(mid.tracks)):
+        mid.tracks[i] = [msg for msg in mid.tracks[i] if msg.type != "unknown_meta"]
+
     if len(mid.tracks) > 1:
         mid.tracks = [mido.merge_tracks(mid.tracks)]
 
@@ -145,8 +150,21 @@ def convert_midi_to_str(cfg: VocabConfig, mid: mido.MidiFile) -> str:
     channel_notes = {i: {} for i in range(16)}
     pedal_on = False
     pedal_events = {}
+    started_flag = False
 
-    output = "<start>"
+    output = ["<start>"]
+
+    def add_to_output(t: Union[str, List[str]]):
+        nonlocal output, started_flag, delta_time_ms
+        if t:
+            if started_flag:
+                output += utils.data_to_wait_tokens(delta_time_ms)
+            delta_time_ms = 0.0
+            if isinstance(t, str):
+                output.append(t)
+            else:
+                output += t
+            started_flag = True
 
     for msg in mid.tracks[0]:
         time_ms = mido.tick2second(msg.time, mid.ticks_per_beat, tempo) * 1000.0
@@ -164,27 +182,25 @@ def convert_midi_to_str(cfg: VocabConfig, mid: mido.MidiFile) -> str:
         if t == "program_change":
             channel_program[msg.channel] = msg.program
         elif t == "note_on":
-            output += utils.data_to_wait_tokens(delta_time_ms)
-            delta_time_ms = 0.0
-            output += utils.data_to_note_token(
+            token = utils.data_to_note_token(
                 channel_program[msg.channel],
                 msg.channel,
                 msg.note,
                 mix_volume(msg.velocity, channel_volume[msg.channel], channel_expression[msg.channel]),
             )
+            add_to_output(token)
             channel_notes[msg.channel][msg.note] = True
         elif t == "note_off":
             if pedal_on:
                 pedal_events[(msg.channel, msg.note)] = True
             else:
-                output += utils.data_to_wait_tokens(delta_time_ms)
-                delta_time_ms = 0.0
-                output += utils.data_to_note_token(
+                token = utils.data_to_note_token(
                     channel_program[msg.channel],
                     msg.channel,
                     msg.note,
                     0,
                 )
+                add_to_output(token)
                 if msg.note in channel_notes[msg.channel]:
                     del channel_notes[msg.channel][msg.note]
         elif t == "control_change":
@@ -195,33 +211,34 @@ def convert_midi_to_str(cfg: VocabConfig, mid: mido.MidiFile) -> str:
             elif msg.control == 64:  # sustain pedal
                 pedal_on = msg.value >= 64
                 if not pedal_on:
-                    output += utils.data_to_wait_tokens(delta_time_ms)
-                    delta_time_ms = 0.0
+                    tokens = []
                     for (channel, note) in pedal_events:
-                        output += utils.data_to_note_token(
+                        tokens.append(utils.data_to_note_token(
                             channel_program[channel],
                             channel,
                             note,
                             0,
-                        )
-                        del channel_notes[channel][note]
+                        ))
+                        if note in channel_notes[channel]:
+                            del channel_notes[channel][note]
                     pedal_events = {}
+                    add_to_output(tokens)
             elif msg.control == 123:  # all notes off
                 for channel in channel_notes.keys():
+                    tokens = []
                     for note in channel_notes[channel]:
-                        output += utils.data_to_wait_tokens(delta_time_ms)
-                        delta_time_ms = 0.0
-                        output += utils.data_to_note_token(
+                        tokens.append(utils.data_to_note_token(
                             channel_program[channel],
                             channel,
                             note,
                             0,
-                        )
+                        ))
                     channel_notes[channel] = {}
+                    add_to_output(tokens)
         else:
             pass
-    output += "<end>"
-    return output
+    output.append("<end>")
+    return " ".join(output)
 
 
 def convert_str_to_midi(cfg: VocabConfig, data: str, meta_text: str = "Generated by MIDI-LLM-tokenizer") -> mido.MidiFile:
@@ -244,11 +261,13 @@ def convert_str_to_midi(cfg: VocabConfig, data: str, meta_text: str = "Generated
 
     delta_ms = 0.0
 
-    data = data.replace("<start>", "").replace("<end>", "")
+    data = data.replace("<start>", "").replace("<end>", "").strip()
     for token in data.split(" "):
         if not token:
             continue
-        if token[0] == "T":  # wait token
+        token = token.strip() # just in case
+
+        if token[0] == "t" and token[1].isdigit():  # wait token
             delta_ms += utils.wait_token_to_delta(token)
         else:  # note token
             bin, note, velocity = utils.note_token_to_data(token)
