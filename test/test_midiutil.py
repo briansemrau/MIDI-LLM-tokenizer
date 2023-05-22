@@ -1,4 +1,8 @@
 import mido
+import os, sys
+sys.path.append(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir))
+)
 import midiutil
 
 cfg = midiutil.VocabConfig.from_json("vocab_config.json")

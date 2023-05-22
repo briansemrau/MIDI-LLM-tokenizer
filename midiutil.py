@@ -261,7 +261,7 @@ def convert_str_to_midi(cfg: VocabConfig, data: str, meta_text: str = "Generated
 
     delta_ms = 0.0
 
-    data = data.replace("<start>", "").replace("<end>", "").strip()
+    data = data.replace("<start>", "").replace("<end>", "").replace("<pad>", "").strip()
     for token in data.split(" "):
         if not token:
             continue
