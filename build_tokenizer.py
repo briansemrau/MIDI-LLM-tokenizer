@@ -24,21 +24,27 @@ def build_tokenizer(cfg: VocabConfig):
         vocab.extend([utils.format_note_token(i, n, v) for n in range(cfg.note_events) for v in range(cfg.velocity_bins)])
 
     tokenizer = Tokenizer(WordLevel(vocab={x: i for i, x in enumerate(vocab)}, unk_token="<pad>"))
-    tokenizer.add_special_tokens(special_tokens)
     tokenizer.pre_tokenizer = WhitespaceSplit()
     tokenizer.normalizer = Lowercase()
-    tokenizer.save("tmp_tokenizer.json")
-    
+    tokenizer.add_special_tokens(special_tokens)
+    # add extra tokens to make vocab size divisible by 128
+    if tokenizer.get_vocab_size() % 128 > 0:
+        extra_tokens = 128 - (tokenizer.get_vocab_size() % 128)
+        tokenizer.add_tokens([f"<extra{i}>" for i in range(extra_tokens)])
+    assert tokenizer.get_vocab_size() % 128 == 0
+    print(f"Vocab size: {tokenizer.get_vocab_size()}")
+
+    tk_name = "tokenizer-midi"
+    tokenizer.save(f"{tk_name}.json")
     fast_tokenizer = PreTrainedTokenizerFast(
-        tokenizer_file="tmp_tokenizer.json",
+        tokenizer_file=f"tokenizer-midi.json",
         model_input_names=["input_ids"],
         bos_token="<start>",
         eos_token="<end>",
         pad_token="<pad>",
         unk_token="<pad>",
     )
-    fast_tokenizer.save_pretrained("tokenizer-midi")
-    os.remove("tmp_tokenizer.json")
+    fast_tokenizer.save_pretrained(tk_name)
 
 
 if __name__ == "__main__":
