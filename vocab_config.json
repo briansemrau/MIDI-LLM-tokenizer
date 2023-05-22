@@ -3,7 +3,7 @@
     "wait_events": 125,
     "max_wait_time": 1000,
     "velocity_events": 128,
-    "velocity_bins": 16,
+    "velocity_exp": 0.5,
     "bin_instrument_names": [
         "piano",
         "marimba",

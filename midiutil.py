@@ -1,8 +1,8 @@
 import json
 from dataclasses import dataclass
 from functools import lru_cache
-from math import ceil, floor
-from typing import Dict, List, Tuple, Union
+from math import ceil, floor, log
+from typing import Dict, List, Tuple, Optional
 
 import mido
 
@@ -19,6 +19,8 @@ class VocabConfig:
     velocity_events: int
     # Number of bins to quantize velocity into. Should evenly divide velocity_events.
     velocity_bins: int
+    # Exponential scaling factor for velocity bin sizes. 1.0 = linear scaling.
+    velocity_exp: float
     # List of instrument names to use for binning. Must have at most 16 values.
     bin_instrument_names: List[str]
     # Indicates which bin name represents percussion instruments on MIDI channel 10.
@@ -32,9 +34,6 @@ class VocabConfig:
 
     def __post_init__(self):
         self.validate()
-        # make sure ch10 instrument is in 10th slot
-        if self.ch10_instrument_bin_name != self.bin_instrument_names[9]:
-            self.bin_instrument_names[9], self.bin_instrument_names[self.bin_instrument_names.index(self.ch10_instrument_bin_name)] = self.ch10_instrument_bin_name, self.bin_instrument_names[9]
         
         self._instrument_names_str_to_int = {name: int(i) for i, name in self.instrument_names.items()}
         self._instrument_names_int_to_str = {int(i): name for i, name in self.instrument_names.items()}
@@ -42,14 +41,21 @@ class VocabConfig:
         self._bin_int_to_instrument_int = [self._instrument_names_str_to_int[self.bin_name_to_program_name[name]] if name != self.ch10_instrument_bin_name else 0 for name in self.bin_instrument_names]
         self._instrument_int_to_bin_int = [self.bin_instrument_names.index(self.program_name_to_bin_name[instr]) if self.program_name_to_bin_name[instr] != "" else -1 for instr in self.program_name_to_bin_name.keys()]
 
+        self._ch10_bin_int = self.bin_instrument_names.index(self.ch10_instrument_bin_name) if self.ch10_instrument_bin_name else -1
+
         self.short_instr_bin_names = []
         for instr in self.bin_instrument_names:
             i = min(1, len(instr))
-
             while instr[:i] in self.short_instr_bin_names:
                 i += 1
             self.short_instr_bin_names.append(instr[:i])
         self._short_instrument_names_str_to_int = {name: int(i) for i, name in enumerate(self.short_instr_bin_names)}
+
+        range_excluding_ch10 = [(i if i < 9 else i+1) for i in range(len(self.bin_instrument_names))]
+        bins_excluding_ch10 = [n for n in self.bin_instrument_names if n != self.ch10_instrument_bin_name]
+        self.bin_channel_map = {bin: channel for channel, bin in zip(range_excluding_ch10, bins_excluding_ch10)}
+        if self.ch10_instrument_bin_name:
+            self.bin_channel_map[self.ch10_instrument_bin_name] = 9
 
     def validate(self):
         if self.max_wait_time % self.wait_events != 0:
@@ -58,6 +64,10 @@ class VocabConfig:
             raise ValueError("velocity_bins must be at least 2")
         if len(self.bin_instrument_names) > 16:
             raise ValueError("bin_instruments must have at most 16 values")
+        if self.ch10_instrument_bin_name and self.ch10_instrument_bin_name not in self.bin_instrument_names:
+            raise ValueError("ch10_instrument_bin_name must be in bin_instruments")
+        if self.velocity_exp <= 0:
+            raise ValueError("velocity_exp must be greater than 0")
 
     @classmethod
     def from_json(cls, path: str):
@@ -80,11 +90,17 @@ class VocabUtils:
 
     def velocity_to_bin(self, velocity: float) -> int:
         binsize = self.cfg.velocity_events / (self.cfg.velocity_bins - 1)
-        return ceil(velocity / binsize)
+        if self.cfg.velocity_exp == 1.0:
+            return ceil(velocity / binsize)
+        else:
+            return ceil((self.cfg.velocity_events*((self.cfg.velocity_exp**(velocity/self.cfg.velocity_events)-1)/(self.cfg.velocity_exp-1))) / binsize)
 
     def bin_to_velocity(self, bin: int) -> int:
         binsize = self.cfg.velocity_events / (self.cfg.velocity_bins - 1)
-        return max(0, ceil(bin * binsize - 1))
+        if self.cfg.velocity_exp == 1.0:
+            return max(0, ceil(bin * binsize - 1))
+        else:
+            return max(0, ceil(self.cfg.velocity_events*log(((self.cfg.velocity_exp-1)*binsize*bin)/self.cfg.velocity_events+1, self.cfg.velocity_exp) - 1))
 
     def delta_to_wait_ids(self, delta_ms: float) -> List[int]:
         def roundi(f: float):
@@ -104,18 +120,31 @@ class VocabUtils:
         if leftover_time_shift > 0:
             yield leftover_time_shift
 
-    def data_to_note_token(self, program: int, channel: int, note: int, velocity: int) -> str:
+    def prog_data_to_token_data(self, program: int, channel: int, note: int, velocity: float) -> Optional[Tuple[int, int, int]]:
         if channel == 9:
-            return self.format_note_token(9, note, self.velocity_to_bin(velocity))
+            return self.cfg._ch10_bin_int, note, self.velocity_to_bin(velocity)
         
         instrument_bin = self.cfg._instrument_int_to_bin_int[program]
         if instrument_bin != -1:
-            return self.format_note_token(instrument_bin, note, self.velocity_to_bin(velocity))
-        return ""
+            return instrument_bin, note, self.velocity_to_bin(velocity)
+        return None
+
+    def data_to_note_token(self, program: int, channel: int, note: int, velocity: int) -> str:
+        data = self.prog_data_to_token_data(program, channel, note, velocity)
+        if data is None:
+            return ""
+        return self.format_note_token(*data)
+
+    def unsorted_data_to_note_tokens(self, data: List[Tuple[int, int, int, float]]) -> List[str]:
+        td = [self.prog_data_to_token_data(*d) for d in data]
+        td.sort(key=lambda x: (x[0]!=self.cfg._ch10_bin_int, x[0], x[1], x[2]))
+        for t in td:
+            yield self.format_note_token(*t)
 
     def data_to_wait_tokens(self, delta_ms: float) -> List[str]:
-        for i in self.delta_to_wait_ids(delta_ms):
-            yield self.format_wait_token(i)
+        if delta_ms == 0.0:
+            return []
+        return [self.format_wait_token(i) for i in self.delta_to_wait_ids(delta_ms)]
     
     def wait_token_to_delta(self, token: str) -> float:
         return self.cfg.max_wait_time / self.cfg.wait_events * int(token[1:])
@@ -153,18 +182,22 @@ def convert_midi_to_str(cfg: VocabConfig, mid: mido.MidiFile) -> str:
     started_flag = False
 
     output = ["<start>"]
+    token_data_buffer: List[Tuple[int, int, int, float]] = []  # need to sort notes between wait tokens
 
-    def add_to_output(t: Union[str, List[str]]):
-        nonlocal output, started_flag, delta_time_ms
-        if t:
-            if started_flag:
-                output += utils.data_to_wait_tokens(delta_time_ms)
-            delta_time_ms = 0.0
-            if isinstance(t, str):
-                output.append(t)
-            else:
-                output += t
-            started_flag = True
+    def add_to_output(prog: int, chan: int, note: int, vel: float):
+        nonlocal output, started_flag, delta_time_ms, cfg, utils, token_data_buffer
+        is_token_valid = utils.prog_data_to_token_data(prog, chan, note, vel) is not None
+        if not is_token_valid:
+            return
+        if started_flag:
+            wait_tokens = utils.data_to_wait_tokens(delta_time_ms)
+            if len(wait_tokens) > 0:
+                output += utils.unsorted_data_to_note_tokens(token_data_buffer)
+                output += wait_tokens
+                token_data_buffer = []
+        delta_time_ms = 0.0
+        token_data_buffer.append((prog, chan, note, vel))
+        started_flag = True
 
     for msg in mid.tracks[0]:
         time_ms = mido.tick2second(msg.time, mid.ticks_per_beat, tempo) * 1000.0
@@ -182,25 +215,23 @@ def convert_midi_to_str(cfg: VocabConfig, mid: mido.MidiFile) -> str:
         if t == "program_change":
             channel_program[msg.channel] = msg.program
         elif t == "note_on":
-            token = utils.data_to_note_token(
+            add_to_output(
                 channel_program[msg.channel],
                 msg.channel,
                 msg.note,
                 mix_volume(msg.velocity, channel_volume[msg.channel], channel_expression[msg.channel]),
             )
-            add_to_output(token)
             channel_notes[msg.channel][msg.note] = True
         elif t == "note_off":
             if pedal_on:
                 pedal_events[(msg.channel, msg.note)] = True
             else:
-                token = utils.data_to_note_token(
+                add_to_output(
                     channel_program[msg.channel],
                     msg.channel,
                     msg.note,
                     0,
                 )
-                add_to_output(token)
                 if msg.note in channel_notes[msg.channel]:
                     del channel_notes[msg.channel][msg.note]
         elif t == "control_change":
@@ -211,32 +242,30 @@ def convert_midi_to_str(cfg: VocabConfig, mid: mido.MidiFile) -> str:
             elif msg.control == 64:  # sustain pedal
                 pedal_on = msg.value >= 64
                 if not pedal_on:
-                    tokens = []
                     for (channel, note) in pedal_events:
-                        tokens.append(utils.data_to_note_token(
+                        add_to_output(
                             channel_program[channel],
                             channel,
                             note,
                             0,
-                        ))
+                        )
                         if note in channel_notes[channel]:
                             del channel_notes[channel][note]
                     pedal_events = {}
-                    add_to_output(tokens)
             elif msg.control == 123:  # all notes off
                 for channel in channel_notes.keys():
-                    tokens = []
                     for note in channel_notes[channel]:
-                        tokens.append(utils.data_to_note_token(
+                        add_to_output(
                             channel_program[channel],
                             channel,
                             note,
                             0,
-                        ))
+                        )
                     channel_notes[channel] = {}
-                    add_to_output(tokens)
         else:
             pass
+
+    output += utils.unsorted_data_to_note_tokens(token_data_buffer)
     output.append("<end>")
     return " ".join(output)
 
@@ -251,13 +280,12 @@ def convert_str_to_midi(cfg: VocabConfig, data: str, meta_text: str = "Generated
     if meta_text:
         track.append(mido.MetaMessage("text", text=meta_text, time=0))
     track.append(mido.MetaMessage("set_tempo", tempo=tempo, time=0))
-    for channel, bin_name in enumerate(cfg.bin_instrument_names):
-        if bin_name == cfg.ch10_instrument_bin_name:
-            #assert channel == 9
-            track.append(mido.Message("program_change", program=0, time=0, channel=channel))
+    for bin_name, channel in cfg.bin_channel_map.items():
+        if channel == 9:
             continue
         program = cfg._instrument_names_str_to_int[cfg.bin_name_to_program_name[bin_name]]
         track.append(mido.Message("program_change", program=program, time=0, channel=channel))
+    track.append(mido.Message("program_change", program=0, time=0, channel=9))
 
     delta_ms = 0.0
 
@@ -271,7 +299,7 @@ def convert_str_to_midi(cfg: VocabConfig, data: str, meta_text: str = "Generated
             delta_ms += utils.wait_token_to_delta(token)
         else:  # note token
             bin, note, velocity = utils.note_token_to_data(token)
-            channel = bin
+            channel = cfg.bin_channel_map[cfg.bin_instrument_names[bin]]
             ticks = int(mido.second2tick(delta_ms / 1000.0, mid.ticks_per_beat, tempo))
             delta_ms = 0.0
             if velocity > 0:
