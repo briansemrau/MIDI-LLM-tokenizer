@@ -5,6 +5,7 @@
     "velocity_events": 128,
     "velocity_bins": 12,
     "velocity_exp": 0.5,
+    "do_token_sorting": true,
     "bin_instrument_names": [
         "piano",
         "marimba",

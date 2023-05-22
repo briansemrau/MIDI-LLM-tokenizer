@@ -3,8 +3,8 @@ import os
 
 import mido
 
-import midiutil
-from midiutil import VocabConfig
+import midi_util
+from midi_util import VocabConfig
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
@@ -31,7 +31,7 @@ if __name__ == "__main__":
     cfg = VocabConfig.from_json(args.vocab_config)
 
     mid = mido.MidiFile(args.filename)
-    text = midiutil.convert_midi_to_str(cfg, mid)
+    text = midi_util.convert_midi_to_str(cfg, mid)
     
     if args.output is not None:
         with open(args.output, "w") as f:

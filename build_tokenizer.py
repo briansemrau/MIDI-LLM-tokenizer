@@ -7,7 +7,7 @@ from tokenizers.pre_tokenizers import WhitespaceSplit
 from tokenizers.normalizers import Lowercase
 from transformers import PreTrainedTokenizerFast
 
-from midiutil import VocabConfig, VocabUtils
+from midi_util import VocabConfig, VocabUtils
 
 
 def build_tokenizer(cfg: VocabConfig):

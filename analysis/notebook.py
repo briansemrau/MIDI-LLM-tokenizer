@@ -22,23 +22,41 @@ from tqdm import tqdm
 nproc = multiprocessing.cpu_count()
 
 import tarfile
+import zipfile
 import os
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-dataset_path = "/mnt/e/datasets/music/lakh_midi_v0.1/lmd_full.tar.gz"
-dataset_name = "Lakh MIDI v0.1"
-dataset_size = 176581
+# dataset_path = "/mnt/e/datasets/music/lakh_midi_v0.1/lmd_full.tar.gz"
+# dataset_name = "Lakh MIDI v0.1"
+# dataset_short = "lmd_full"
+# dataset_size = 176581
+dataset_path = "/mnt/e/datasets/music/midishrine-game-may-2023/files.zip"
+dataset_name = "MidiShrine (May 2023)"
+dataset_short = "msg_may2023"
+dataset_size = 3321
 sample_size = dataset_size#10000
 
-def file_generator(max: int):
-    count = 0
-    with tarfile.open(dataset_path, "r:gz") as tar:
-        for member in tar:
-            if member.isfile() and member.name.endswith((".mid", ".midi")):
-                yield tar.extractfile(member).read()
-                count += 1
-                if count >= max:
-                    break
+if dataset_path.endswith(".tar.gz"):
+    def file_generator(max: int):
+        count = 0
+        with tarfile.open(dataset_path, "r:gz") as tar:
+            for member in tar:
+                if member.isfile() and member.name.endswith((".mid", ".midi")):
+                    yield tar.extractfile(member).read()
+                    count += 1
+                    if count >= max:
+                        break
+elif dataset_path.endswith(".zip"):
+    def file_generator(max: int):
+        count = 0
+        with zipfile.ZipFile(dataset_path, "r") as zip:
+            for member in zip.infolist():
+                if not member.is_dir() and member.filename.endswith((".mid", ".midi")):
+                    yield zip.read(member.filename)
+                    count += 1
+                    if count >= max:
+                        break
+    
 def load_file(f):
     try:
         mid = mido.MidiFile(file=io.BytesIO(f))
@@ -89,7 +107,7 @@ plt.ylabel("Count")
 # label bars with values
 for i, v in enumerate(labeled_types.values()):
     plt.text(i, v, f"{v:,}", ha="center", va="bottom")
-plt.savefig("midi_file_types.png", dpi=300)
+plt.savefig(f"{dataset_short}_midi_file_types.png", dpi=300)
 plt.show()
 
 
@@ -139,7 +157,7 @@ plt.xlabel("Channel")
 plt.ylabel("File Count")
 plt.xticks(np.arange(0, 16, 1))
 plt.bar(channel_occ_sum.keys(), channel_occ_sum.values())
-plt.savefig("channel_occurrences.png", dpi=300)
+plt.savefig(f"{dataset_short}_channel_occurrences.png", dpi=300)
 plt.show()
 
 # sort by most common, plot top with labels
@@ -151,7 +169,7 @@ plt.xlabel("Instrument")
 plt.ylabel("File Count")
 plt.xticks(rotation=45, ha="right")
 plt.bar(instruments_labeled.keys(), instruments_labeled.values())
-plt.savefig("most_common_instruments.png", dpi=300)
+plt.savefig(f"{dataset_short}_most_common_instruments.png", dpi=300)
 plt.show()
 
 # plot least common
@@ -163,7 +181,7 @@ plt.xlabel("Instrument")
 plt.ylabel("File Count")
 plt.xticks(rotation=45, ha="right")
 plt.bar(instruments_labeled.keys(), instruments_labeled.values())
-plt.savefig("least_common_instruments.png", dpi=300)
+plt.savefig(f"{dataset_short}_least_common_instruments.png", dpi=300)
 plt.show()
 
 # plot all, unlabeled, sorted by instrument number
@@ -173,7 +191,7 @@ plt.xlabel("Instrument")
 plt.ylabel("File Count")
 plt.xticks(np.arange(0, 128, 8))
 plt.bar(instr_occ_sum.keys(), instr_occ_sum.values())
-plt.savefig("instrument_occurrences.png", dpi=300)
+plt.savefig(f"{dataset_short}_instrument_occurrences.png", dpi=300)
 plt.show()
 
 # plot co-occurrences. ignore lower triangle and diagonal
@@ -197,7 +215,7 @@ cmap.set_under("white")
 cmap.set_over("purple")
 plt.imshow(co_occurrences, cmap=cmap, vmin=1, vmax=np.quantile(co_occurrences, 0.999))
 plt.subplots_adjust(hspace=0.5)
-plt.savefig("instrument_co_occurrences.png", dpi=300)
+plt.savefig(f"{dataset_short}_instrument_co_occurrences.png", dpi=300)
 plt.show()
 
 # plot most common drums
@@ -209,7 +227,7 @@ plt.xlabel("Drum")
 plt.ylabel("File Count")
 plt.xticks(rotation=45, ha="right")
 plt.bar(drums_labeled.keys(), drums_labeled.values())
-plt.savefig("most_common_drums.png", dpi=300)
+plt.savefig(f"{dataset_short}_most_common_drums.png", dpi=300)
 plt.show()
 
 # plot least common drums
@@ -222,7 +240,7 @@ plt.xlabel("Drum")
 plt.ylabel("File Count")
 plt.xticks(rotation=45, ha="right")
 plt.bar(drums_labeled.keys(), drums_labeled.values())
-plt.savefig("least_common_drums.png", dpi=300)
+plt.savefig(f"{dataset_short}_least_common_drums.png", dpi=300)
 plt.show()
 
 # plot all drums, sorted by instrument number
@@ -232,7 +250,7 @@ plt.xlabel("Drum")
 plt.ylabel("File Count")
 plt.xticks(np.arange(0, 128, 8))
 plt.bar(instr_c10_occ_sum.keys(), instr_c10_occ_sum.values())
-plt.savefig("drum_occurrences.png", dpi=300)
+plt.savefig(f"{dataset_short}_drum_occurrences.png", dpi=300)
 plt.show()
 
 
@@ -271,7 +289,7 @@ plt.xlabel("Control Change")
 plt.ylabel("Count")
 plt.xticks(rotation=45, ha="right")
 plt.bar(sorted_control_changes_top.keys(), sorted_control_changes_top.values())
-plt.savefig("most_common_control_changes.png", dpi=300)
+plt.savefig(f"{dataset_short}_most_common_control_changes.png", dpi=300)
 plt.show()
 
 # heatmap
@@ -300,7 +318,7 @@ for y in sorted_control_changes_top:
     line.set_clip_on(False)
     plt.gca().add_line(line)
 plt.subplots_adjust(hspace=0.5)
-plt.savefig("control_change_heatmap.png", dpi=300)
+plt.savefig(f"{dataset_short}_control_change_heatmap.png", dpi=300)
 plt.show()
 
 # show control changes file presence (top 15)
@@ -312,7 +330,7 @@ plt.xlabel("Control Change")
 plt.ylabel("Count")
 plt.xticks(rotation=45, ha="right")
 plt.bar(sorted_control_changes_file_count_top.keys(), sorted_control_changes_file_count_top.values())
-plt.savefig("control_changes_file_presence.png", dpi=300)
+plt.savefig(f"{dataset_short}_control_changes_file_presence.png", dpi=300)
 plt.show()
 
 
@@ -363,7 +381,7 @@ cmap.set_under("white")
 cmap.set_over("purple")
 plt.imshow(note_occ_array_norm, origin='lower', cmap=cmap, vmin=0.0000000001, vmax=np.quantile(note_occ_array_norm, 0.9999))
 plt.subplots_adjust(hspace=0.5)
-plt.savefig("note_occurrences_heatmap.png", dpi=300)
+plt.savefig(f"{dataset_short}_note_occurrences_heatmap.png", dpi=300)
 plt.show()
 
 
@@ -392,5 +410,5 @@ plt.xlabel("Meta Event")
 plt.ylabel("Count")
 plt.xticks(rotation=45, ha="right")
 plt.bar(sorted_meta_events_top.keys(), sorted_meta_events_top.values())
-plt.savefig("meta_events.png", dpi=300)
+plt.savefig(f"{dataset_short}_meta_events.png", dpi=300)
 plt.show()

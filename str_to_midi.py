@@ -1,8 +1,8 @@
 import argparse
 import os
 
-import midiutil
-from midiutil import VocabConfig
+import midi_util
+from midi_util import VocabConfig
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
@@ -28,5 +28,5 @@ if __name__ == "__main__":
 
     cfg = VocabConfig.from_json(args.vocab_config)
 
-    mid = midiutil.convert_str_to_midi(cfg, args.text)
+    mid = midi_util.convert_str_to_midi(cfg, args.text)
     mid.save(os.path.abspath(args.output))
