@@ -99,7 +99,7 @@ class VocabUtils:
         if self.cfg.velocity_exp == 1.0:
             return ceil(velocity / binsize)
         else:
-            return ceil((self.cfg.velocity_events*((self.cfg.velocity_exp**(velocity/self.cfg.velocity_events)-1)/(self.cfg.velocity_exp-1))) / binsize)
+            return ceil((self.cfg.velocity_events*((self.cfg.velocity_exp**velocity-1.0) / (self.cfg.velocity_exp-1.0))) / binsize)
 
     def bin_to_velocity(self, bin: int) -> int:
         binsize = self.cfg.velocity_events / (self.cfg.velocity_bins - 1)
