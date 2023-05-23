@@ -282,7 +282,7 @@ def convert_midi_to_str(cfg: VocabConfig, mid: mido.MidiFile, augment: AugmentVa
 
     def flush_token_data_buffer():
         nonlocal token_data_buffer, output, cfg, utils, augment
-        token_data = utils.prog_data_list_to_token_data_list(token_data_buffer)
+        token_data = [x for x in utils.prog_data_list_to_token_data_list(token_data_buffer)]
         if augment.instrument_bin_remap or augment.transpose_semitones:
             token_data = [(augment.instrument_bin_remap.get(i, i), n + augment.transpose_semitones, v) for i, n, v in token_data]
         if cfg.do_token_sorting:

@@ -1,0 +1,24 @@
+{
+    "augment_data_factor": 20,
+    "seed": 123,
+    "instrument_mixups": [],
+    "velocity_mod_pct": [
+        -0.1,
+        0,
+        0.1
+    ],
+    "transpose_semitones": [
+        -3,
+        -2,
+        -1,
+        0,
+        1,
+        2,
+        3
+    ],
+    "time_stretch_pct": [
+        -0.025,
+        0.0,
+        0.025
+    ]
+}
