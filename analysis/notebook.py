@@ -30,10 +30,14 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 # dataset_name = "Lakh MIDI v0.1"
 # dataset_short = "lmd_full"
 # dataset_size = 176581
-dataset_path = "/mnt/e/datasets/music/midishrine-game-may-2023/files.zip"
-dataset_name = "MidiShrine (May 2023)"
-dataset_short = "msg_may2023"
-dataset_size = 3321
+# dataset_path = "/mnt/e/datasets/music/midishrine-game-may-2023/files.zip"
+# dataset_name = "MidiShrine (May 2023)"
+# dataset_short = "msg_may2023"
+# dataset_size = 3321
+dataset_path = "/mnt/e/datasets/music/GiantMIDI-Piano/midis_v1.2.zip"
+dataset_name = "GiantMIDI Piano (v1.2)"
+dataset_short = "gmp"
+dataset_size = 10855
 sample_size = dataset_size#10000
 
 if dataset_path.endswith(".tar.gz"):
@@ -213,7 +217,7 @@ plt.grid(which='major', axis='both', color='blue', linestyle='-', linewidth=0.5,
 cmap = mpl.cm.Blues.copy()
 cmap.set_under("white")
 cmap.set_over("purple")
-plt.imshow(co_occurrences, cmap=cmap, vmin=1, vmax=np.quantile(co_occurrences, 0.999))
+plt.imshow(co_occurrences, cmap=cmap, vmin=1, vmax=max(2, np.quantile(co_occurrences, 0.999)))
 plt.subplots_adjust(hspace=0.5)
 plt.savefig(f"{dataset_short}_instrument_co_occurrences.png", dpi=300)
 plt.show()
@@ -367,7 +371,7 @@ note_occ_array = np.zeros((128, 128))
 for key, value in note_occ_sum.items():
     note_occ_array[key] = value
 # normalize by instrument
-note_occ_array_norm = note_occ_array / np.max(note_occ_array, axis=0)
+note_occ_array_norm = note_occ_array / np.maximum(1, np.max(note_occ_array, axis=0))
 plt.figure(figsize=(10, 10))
 plt.title(f"Note Occurrences Heatmap\n(normalized by instrument)\n{dataset_name}, n={sample_size:,}")
 plt.ylabel("Note")

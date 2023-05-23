@@ -10,7 +10,7 @@ from transformers import PreTrainedTokenizerFast
 from midi_util import VocabConfig, VocabUtils
 
 
-def build_tokenizer(cfg: VocabConfig):
+def build_tokenizer(cfg: VocabConfig, tk_name: str = "tokenizer-midi"):
     utils = VocabUtils(cfg)
 
     special_tokens = [
@@ -34,10 +34,9 @@ def build_tokenizer(cfg: VocabConfig):
     assert tokenizer.get_vocab_size() % 128 == 0
     print(f"Vocab size: {tokenizer.get_vocab_size()}")
 
-    tk_name = "tokenizer-midi"
     tokenizer.save(f"{tk_name}.json")
     fast_tokenizer = PreTrainedTokenizerFast(
-        tokenizer_file=f"tokenizer-midi.json",
+        tokenizer_file=f"{tk_name}.json",
         model_input_names=["input_ids"],
         bos_token="<start>",
         eos_token="<end>",
@@ -55,7 +54,12 @@ if __name__ == "__main__":
         default="./vocab_config.json",
         help="Path to vocab config file",
     )
-
+    p.add_argument(
+        "--output",
+        type=str,
+        default="tokenizer-midi",
+        help="Path to output tokenizer file",
+    )
     args = p.parse_args()
 
-    build_tokenizer(VocabConfig.from_json(args.vocab_config))
+    build_tokenizer(VocabConfig.from_json(args.vocab_config), args.output)
