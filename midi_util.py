@@ -94,6 +94,7 @@ class VocabUtils:
         return f"{self.cfg.short_instr_bin_names[instrument_bin]}:{note:x}:{velocity_bin:x}"
 
     def velocity_to_bin(self, velocity: float) -> int:
+        velocity = max(0, min(velocity, 1.0))
         binsize = self.cfg.velocity_events / (self.cfg.velocity_bins - 1)
         if self.cfg.velocity_exp == 1.0:
             return ceil(velocity / binsize)
@@ -203,7 +204,8 @@ class AugmentConfig:
         if len(self.time_stretch_pct) == 0:
             self.time_stretch_pct = [0.0]
         
-        self._instrument_mixups_int = [[self.cfg._bin_str_to_int[i] for i in l] for l in self.instrument_mixups]
+        self._instrument_mixups_int = [[self.cfg._bin_str_to_int[i] for i in l if i in self.cfg._bin_str_to_int] for l in self.instrument_mixups]
+        self._instrument_mixups_int = [l for l in self._instrument_mixups_int if len(l) > 0]  # remove empty lists
         self._instrument_pool_assignments = {}
         self._mixup_pools = []
         for pool_i, mixup_list in enumerate(self._instrument_mixups_int):
@@ -284,7 +286,14 @@ def convert_midi_to_str(cfg: VocabConfig, mid: mido.MidiFile, augment: AugmentVa
         nonlocal token_data_buffer, output, cfg, utils, augment
         token_data = [x for x in utils.prog_data_list_to_token_data_list(token_data_buffer)]
         if augment.instrument_bin_remap or augment.transpose_semitones:
-            token_data = [(augment.instrument_bin_remap.get(i, i), n + augment.transpose_semitones, v) for i, n, v in token_data]
+            # TODO put transpose in a real function
+            raw_transpose = lambda bin, n: n + augment.transpose_semitones if bin != cfg._ch10_bin_int else n
+            octave_shift_if_oob = lambda n: n + 12 if n < 0 else n - 12 if n >= cfg.note_events else n
+            # TODO handle ranges beyond 12
+            #octave_shift_if_oob = lambda n: 0 if n < 0 else (n - cfg.note_events) % 12 + cfg.note_events if n >= cfg.note_events else n
+            transpose = lambda bin, n: octave_shift_if_oob(raw_transpose(bin, n))
+
+            token_data = [(augment.instrument_bin_remap.get(i, i), transpose(i, n), v) for i, n, v in token_data]
         if cfg.do_token_sorting:
             token_data = utils.sort_token_data(token_data)
         output += [utils.format_note_token(*t) for t in token_data]

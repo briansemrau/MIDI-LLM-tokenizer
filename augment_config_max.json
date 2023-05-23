@@ -1,5 +1,5 @@
 {
-    "augment_data_factor": 50,
+    "augment_data_factor": 200,
     "seed": 123,
     "instrument_mixups": [
         [
