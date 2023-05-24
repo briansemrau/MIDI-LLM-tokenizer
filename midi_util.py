@@ -24,6 +24,8 @@ class VocabConfig:
     velocity_exp: float
     # Whether to sort tokens by instrument, note. This should improve data reducibility.
     do_token_sorting: bool
+    # Whether tokens should be represented as combined instrument/note/velocity tokens, or separate tokens for each.
+    unrolled_tokens: bool
     # List of instrument names to use for binning. Must have at most 16 values.
     bin_instrument_names: List[str]
     # Indicates which bin name represents percussion instruments on MIDI channel 10.
@@ -93,13 +95,22 @@ class VocabUtils:
     def format_note_token(self, instrument_bin: int, note: int, velocity_bin: int) -> str:
         return f"{self.cfg.short_instr_bin_names[instrument_bin]}:{note:x}:{velocity_bin:x}"
 
+    def format_unrolled_note(self, note: int) -> str:
+        return f"n{note:x}"
+    
+    def format_unrolled_velocity(self, velocity_bin: int) -> str:
+        return f"v{velocity_bin:x}"
+    
+    def format_unrolled_instrument_bin(self, instrument_bin: int) -> str:
+        return f"i{self.cfg.short_instr_bin_names[instrument_bin]}"
+
     def velocity_to_bin(self, velocity: float) -> int:
-        velocity = max(0, min(velocity, 1.0))
+        velocity = max(0, min(velocity, self.cfg.velocity_events - 1))
         binsize = self.cfg.velocity_events / (self.cfg.velocity_bins - 1)
         if self.cfg.velocity_exp == 1.0:
             return ceil(velocity / binsize)
         else:
-            return ceil((self.cfg.velocity_events*((self.cfg.velocity_exp**velocity-1.0) / (self.cfg.velocity_exp-1.0))) / binsize)
+            return ceil((self.cfg.velocity_events*((self.cfg.velocity_exp**(velocity/self.cfg.velocity_events)-1.0) / (self.cfg.velocity_exp-1.0))) / binsize)
 
     def bin_to_velocity(self, bin: int) -> int:
         binsize = self.cfg.velocity_events / (self.cfg.velocity_bins - 1)
@@ -142,7 +153,7 @@ class VocabUtils:
                 yield token_data
 
     def sort_token_data(self, data: List[Tuple[int, int, int]]) -> List[Tuple[int, int, int]]:
-        data.sort(key=lambda x: (x[0]!=self.cfg._ch10_bin_int, x[0], x[1], x[2]))
+        data.sort(key=lambda x: (x[0]!=self.cfg._ch10_bin_int, x[0], x[1], -x[2]))
         return data
 
     def data_to_wait_tokens(self, delta_ms: float) -> List[str]:
@@ -181,14 +192,14 @@ class AugmentValues:
 @dataclass
 class AugmentConfig:
     # The number of times to augment each MIDI file. The dataset size will be multiplied by this number.
-    augment_data_factor: float
+    augment_data_factor: int
     # A list of instrument names to randomly swap with each other.
     instrument_mixups: List[List[str]]
-    # A list of percentages to change the note velocity by. 0.0 = no change.
+    # A list of percentages to change the note velocity by. 0.0 = no change. 0 is included by default.
     velocity_mod_pct: List[float]
-    # A list of semitones to transpose by. 0 is not included by default; it must be specified manually.
+    # A list of semitones to transpose by. 0 is included by default.
     transpose_semitones: List[int]
-    # A list of percentages to stretch the tempo by. 0.0 = no stretch.
+    # A list of percentages to stretch the tempo by. 0.0 = no stretch. 0 is included by default.
     time_stretch_pct: List[float]
     # Random seed to use for reproducibility.
     seed: int
@@ -217,6 +228,8 @@ class AugmentConfig:
 
 
     def validate(self):
+        if self.augment_data_factor < 1:
+            raise ValueError("augment_data_factor must be at least 1")
         used_instruments = set()
         for mixup_list in self.instrument_mixups:
             for n in mixup_list:
@@ -234,8 +247,11 @@ class AugmentConfig:
         return cls(**config)
     
     def get_augment_values(self, filename: str) -> Iterator[AugmentValues]:
+        # first yield default values
+        yield AugmentValues.default()
+
         rng = random.Random(self.seed + hash(filename))
-        for _ in range(int(self.augment_data_factor)):
+        for _ in range(int(self.augment_data_factor - 1)):
             # randomize order for each pool
             randomized_pools = [list(pool) for pool in self._mixup_pools]
             for pool in randomized_pools:
@@ -254,7 +270,7 @@ class AugmentConfig:
 
 
 def mix_volume(velocity: int, volume: int, expression: int) -> float:
-    return min(velocity * (volume / 127.0) * (expression / 127.0), 127)
+    return velocity * (volume / 127.0) * (expression / 127.0)
 
 
 def convert_midi_to_str(cfg: VocabConfig, mid: mido.MidiFile, augment: AugmentValues = None) -> str:
@@ -296,7 +312,11 @@ def convert_midi_to_str(cfg: VocabConfig, mid: mido.MidiFile, augment: AugmentVa
             token_data = [(augment.instrument_bin_remap.get(i, i), transpose(i, n), v) for i, n, v in token_data]
         if cfg.do_token_sorting:
             token_data = utils.sort_token_data(token_data)
-        output += [utils.format_note_token(*t) for t in token_data]
+        if cfg.unrolled_tokens:
+            for t in token_data:
+                output += [utils.format_unrolled_instrument_bin(t[0]), utils.format_unrolled_note(t[1]), utils.format_unrolled_velocity(t[2])]
+        else:
+            output += [utils.format_note_token(*t) for t in token_data]
         token_data_buffer = []
 
     def consume_note_program_data(prog: int, chan: int, note: int, vel: float):
@@ -403,23 +423,44 @@ def convert_str_to_midi(cfg: VocabConfig, data: str, meta_text: str = "Generated
 
     delta_ms = 0.0
 
+    if cfg.unrolled_tokens:
+        current_bin = cfg._short_instrument_names_str_to_int[cfg.short_instr_bin_names[0]]
+        current_note = 0
+
     data = data.replace("<start>", "").replace("<end>", "").replace("<pad>", "").strip()
     for token in data.split(" "):
         if not token:
             continue
         token = token.strip() # just in case
 
-        if token[0] == "t" and token[1].isdigit():  # wait token
-            delta_ms += utils.wait_token_to_delta(token)
-        else:  # note token
-            bin, note, velocity = utils.note_token_to_data(token)
-            channel = cfg.bin_channel_map[cfg.bin_instrument_names[bin]]
-            ticks = int(mido.second2tick(delta_ms / 1000.0, mid.ticks_per_beat, tempo))
-            delta_ms = 0.0
-            if velocity > 0:
-                track.append(mido.Message("note_on", note=note, velocity=velocity, time=ticks, channel=channel))
-            else:
-                track.append(mido.Message("note_off", note=note, velocity=0, time=ticks, channel=channel))
+        if cfg.unrolled_tokens:
+            if token[0] == "t":
+                delta_ms += utils.wait_token_to_delta(token)
+            elif token[0] == "n":
+                current_note = int(token[1:], base=16)
+            elif token[0] == "i":
+                current_bin = cfg._short_instrument_names_str_to_int[token[1:]]
+            elif token[0] == "v":
+                current_velocity = utils.bin_to_velocity(int(token[1:], base=16))
+                channel = cfg.bin_channel_map[cfg.bin_instrument_names[current_bin]]
+                ticks = int(mido.second2tick(delta_ms / 1000.0, mid.ticks_per_beat, tempo))
+                delta_ms = 0.0
+                if current_velocity > 0:
+                    track.append(mido.Message("note_on", note=current_note, velocity=current_velocity, time=ticks, channel=channel))
+                else:
+                    track.append(mido.Message("note_off", note=current_note, velocity=0, time=ticks, channel=channel))
+        else:
+            if token[0] == "t" and token[1].isdigit():  # wait token
+                delta_ms += utils.wait_token_to_delta(token)
+            else:  # note token
+                bin, note, velocity = utils.note_token_to_data(token)
+                channel = cfg.bin_channel_map[cfg.bin_instrument_names[bin]]
+                ticks = int(mido.second2tick(delta_ms / 1000.0, mid.ticks_per_beat, tempo))
+                delta_ms = 0.0
+                if velocity > 0:
+                    track.append(mido.Message("note_on", note=note, velocity=velocity, time=ticks, channel=channel))
+                else:
+                    track.append(mido.Message("note_off", note=note, velocity=0, time=ticks, channel=channel))
     track.append(mido.MetaMessage("end_of_track", time=0))
 
     return mid

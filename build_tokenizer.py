@@ -20,8 +20,13 @@ def build_tokenizer(cfg: VocabConfig, tk_name: str = "tokenizer-midi"):
     ]
     vocab = [*special_tokens]
     vocab.extend([utils.format_wait_token(i) for i in range(cfg.wait_events)])
-    for i in range(len(cfg.short_instr_bin_names)):
-        vocab.extend([utils.format_note_token(i, n, v) for n in range(cfg.note_events) for v in range(cfg.velocity_bins)])
+    if cfg.unrolled_tokens:
+        vocab.extend([utils.format_unrolled_note(n) for n in range(cfg.note_events)])
+        vocab.extend([utils.format_unrolled_velocity(v) for v in range(cfg.velocity_bins)])
+        vocab.extend([utils.format_unrolled_instrument_bin(i) for i in range(len(cfg.short_instr_bin_names))])
+    else:
+        for i in range(len(cfg.short_instr_bin_names)):
+            vocab.extend([utils.format_note_token(i, n, v) for n in range(cfg.note_events) for v in range(cfg.velocity_bins)])
 
     tokenizer = Tokenizer(WordLevel(vocab={x: i for i, x in enumerate(vocab)}, unk_token="<pad>"))
     tokenizer.pre_tokenizer = WhitespaceSplit()

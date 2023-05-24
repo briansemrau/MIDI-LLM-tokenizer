@@ -307,7 +307,7 @@ plt.xlabel("Value")
 cmap = mpl.cm.Blues.copy()
 cmap.set_under("white")
 cmap.set_over("purple")
-plt.imshow(control_changes_array, cmap=cmap, vmin=1, vmax=np.quantile(control_changes_array, 0.999))
+plt.imshow(control_changes_array, cmap=cmap, vmin=1, vmax=np.maximum(2, np.quantile(control_changes_array, 0.999)))
 plt.yticks(ticks=np.arange(0, 128, 8), labels=np.arange(0, 128, 8))
 plt.xticks(ticks=np.arange(0, 128, 16), labels=np.arange(0, 128, 16))
 # y axis text label most common control changes with labels on right

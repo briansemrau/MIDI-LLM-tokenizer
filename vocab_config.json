@@ -6,6 +6,7 @@
     "velocity_bins": 12,
     "velocity_exp": 0.5,
     "do_token_sorting": true,
+    "unrolled_tokens": false,
     "bin_instrument_names": [
         "piano",
         "marimba",
