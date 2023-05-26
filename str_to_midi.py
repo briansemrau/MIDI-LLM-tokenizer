@@ -28,5 +28,11 @@ if __name__ == "__main__":
 
     cfg = VocabConfig.from_json(args.vocab_config)
 
-    mid = midi_util.convert_str_to_midi(cfg, args.text)
+    text: str = args.text
+    if text.endswith(".txt"):
+        with open(text, "r") as f:
+            text = f.read()
+    text = text.strip()
+
+    mid = midi_util.convert_str_to_midi(cfg, text)
     mid.save(os.path.abspath(args.output))

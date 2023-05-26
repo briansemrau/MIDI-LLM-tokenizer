@@ -7,6 +7,8 @@
     "velocity_exp": 0.33,
     "do_token_sorting": true,
     "unrolled_tokens": false,
+    "decode_end_held_note_delay": 5.0,
+    "decode_fix_repeated_notes": true,
     "bin_instrument_names": [
         "piano"
     ],
