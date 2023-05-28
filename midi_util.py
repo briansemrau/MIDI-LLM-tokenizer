@@ -157,8 +157,10 @@ class VocabUtils:
                 yield token_data
 
     def sort_token_data(self, data: List[Tuple[int, int, int]]) -> List[Tuple[int, int, int]]:
-        data.sort(key=lambda x: (x[0]!=self.cfg._ch10_bin_int, x[0], x[1], x[2]))
-        return data
+        # ensure order is preserved for tokens with the same instrument, note
+        data = [(i, n, v, x) for x, (i, n, v) in enumerate(data)]
+        data.sort(key=lambda x: (x[0]!=self.cfg._ch10_bin_int, x[0], x[1], x[3]))
+        return [(i, n, v) for i, n, v, _ in data]
 
     def data_to_wait_tokens(self, delta_ms: float) -> List[str]:
         if delta_ms == 0.0:
