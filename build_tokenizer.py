@@ -19,7 +19,7 @@ def build_tokenizer(cfg: VocabConfig, tk_name: str = "tokenizer-midi"):
         "<end>",
     ]
     vocab = [*special_tokens]
-    vocab.extend([utils.format_wait_token(i) for i in range(cfg.wait_events)])
+    vocab.extend([utils.format_wait_token(i+1) for i in range(cfg.wait_events)])
     if cfg.unrolled_tokens:
         vocab.extend([utils.format_unrolled_note(n) for n in range(cfg.note_events)])
         vocab.extend([utils.format_unrolled_velocity(v) for v in range(cfg.velocity_bins)])
