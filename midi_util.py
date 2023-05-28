@@ -157,7 +157,7 @@ class VocabUtils:
                 yield token_data
 
     def sort_token_data(self, data: List[Tuple[int, int, int]]) -> List[Tuple[int, int, int]]:
-        data.sort(key=lambda x: (x[0]!=self.cfg._ch10_bin_int, x[0], x[1], -x[2]))
+        data.sort(key=lambda x: (x[0]!=self.cfg._ch10_bin_int, x[0], x[1], x[2]))
         return data
 
     def data_to_wait_tokens(self, delta_ms: float) -> List[str]:
@@ -295,8 +295,8 @@ def convert_midi_to_str(cfg: VocabConfig, mid: mido.MidiFile, augment: AugmentVa
     channel_volume = {i: 127 for i in range(16)}
     channel_expression = {i: 127 for i in range(16)}  # unlikely to be useful. expression usually modifies an already played note.
     channel_notes = {i: {} for i in range(16)}
-    pedal_on = False
-    pedal_events = {}
+    channel_pedal_on = {i: False for i in range(16)}
+    channel_pedal_events = {i: {} for i in range(16)}  # {channel: {(note, program) -> True}}
     started_flag = False
 
     output = ["<start>"]
@@ -347,59 +347,44 @@ def convert_midi_to_str(cfg: VocabConfig, mid: mido.MidiFile, augment: AugmentVa
                 tempo = msg.tempo * augment.time_stretch_factor
             continue
 
-        if t == "note_on" and msg.velocity == 0:
-            t = "note_off"
+        def handle_note_off(ch, prog, n):
+            if channel_pedal_on[ch]:
+                channel_pedal_events[ch][(n, prog)] = True
+            else:
+                consume_note_program_data(prog, ch, n, 0)
+                if n in channel_notes[ch]:
+                    del channel_notes[ch][n]
 
         if t == "program_change":
             channel_program[msg.channel] = msg.program
         elif t == "note_on":
-            consume_note_program_data(
-                channel_program[msg.channel],
-                msg.channel,
-                msg.note,
-                mix_volume(msg.velocity, channel_volume[msg.channel], channel_expression[msg.channel]),
-            )
-            channel_notes[msg.channel][msg.note] = True
-        elif t == "note_off":
-            if pedal_on:
-                pedal_events[(msg.channel, msg.note)] = True
+            if msg.velocity == 0:
+                handle_note_off(msg.channel, channel_program[msg.channel], msg.note)
             else:
                 consume_note_program_data(
                     channel_program[msg.channel],
                     msg.channel,
                     msg.note,
-                    0,
+                    mix_volume(msg.velocity, channel_volume[msg.channel], channel_expression[msg.channel]),
                 )
-                if msg.note in channel_notes[msg.channel]:
-                    del channel_notes[msg.channel][msg.note]
+                channel_notes[msg.channel][msg.note] = True
+        elif t == "note_off":
+            handle_note_off(msg.channel, channel_program[msg.channel], msg.note)
         elif t == "control_change":
             if msg.control == 7 or msg.control == 39:  # volume
                 channel_volume[msg.channel] = msg.value
             elif msg.control == 11:  # expression
                 channel_expression[msg.channel] = msg.value
             elif msg.control == 64:  # sustain pedal
-                pedal_on = msg.value >= 64
-                if not pedal_on:
-                    for (channel, note) in pedal_events:
-                        consume_note_program_data(
-                            channel_program[channel],
-                            channel,
-                            note,
-                            0,
-                        )
-                        if note in channel_notes[channel]:
-                            del channel_notes[channel][note]
-                    pedal_events = {}
+                channel_pedal_on[msg.channel] = msg.value >= 64
+                if not channel_pedal_on[msg.channel]:
+                    for (note, program) in channel_pedal_events[msg.channel]:
+                        handle_note_off(msg.channel, program, note)
+                    channel_pedal_events[msg.channel] = {}
             elif msg.control == 123:  # all notes off
                 for channel in channel_notes.keys():
                     for note in channel_notes[channel]:
-                        consume_note_program_data(
-                            channel_program[channel],
-                            channel,
-                            note,
-                            0,
-                        )
-                    channel_notes[channel] = {}
+                        handle_note_off(channel, channel_program[channel], note)
         else:
             pass
 
