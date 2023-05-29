@@ -365,6 +365,8 @@ def convert_midi_to_str(cfg: VocabConfig, mid: mido.MidiFile, augment: AugmentVa
             if msg.velocity == 0:
                 handle_note_off(msg.channel, channel_program[msg.channel], msg.note)
             else:
+                if (msg.note, channel_program[msg.channel]) in channel_pedal_events[msg.channel]:
+                    del channel_pedal_events[msg.channel][(msg.note, channel_program[msg.channel])]
                 consume_note_program_data(
                     channel_program[msg.channel],
                     msg.channel,
