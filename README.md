@@ -17,7 +17,7 @@ MIDI files contain a lot of data, and only some of it can be reasonably learned 
 Inspired by OpenAI MuseNet and Oore et. al, 2018, we have two main types of tokens:
 - Wait tokens for timing (125 of them, representing real time)
 - Combined note+velocity+instrument tokens (128 notes * 16 quantized velocity * 16 binned instruments = 32768 tokens)
-- plus pad/start/end tokens.
+- pad/start/end tokens.
 
 Notes and quantized velocities are encoded as hex, while instruments are encoded as the shortest unique string.
 
@@ -29,6 +29,10 @@ We (knowingly) discard the following information:
 - Time signature
 - Track names
 - Instrument names (we assume the standard GM instruments)
+
+Simultaneous tokens (e.g. chords) are sorted by instrument, note, then MIDI event order. This reduces unnecessary randomness in the data.
+
+In the future, instrument order could be uniformly randomized to allow constrained sampling where you provide a preexisting track and the model generates a melody.
 
 # Scripts
 
