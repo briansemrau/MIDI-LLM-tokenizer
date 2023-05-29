@@ -143,6 +143,8 @@ class VocabUtils:
 
     def prog_data_to_token_data(self, program: int, channel: int, note: int, velocity: float) -> Optional[Tuple[int, int, int]]:
         if channel == 9:
+            if self.cfg._ch10_bin_int == -1:
+                return None
             return self.cfg._ch10_bin_int, note, self.velocity_to_bin(velocity)
         
         instrument_bin = self.cfg._instrument_int_to_bin_int[program]
@@ -385,7 +387,7 @@ def convert_midi_to_str(cfg: VocabConfig, mid: mido.MidiFile, augment: AugmentVa
                     channel_pedal_events[msg.channel] = {}
             elif msg.control == 123:  # all notes off
                 for channel in channel_notes.keys():
-                    for note in channel_notes[channel]:
+                    for note in list(channel_notes[channel]).copy():
                         handle_note_off(channel, channel_program[channel], note)
         else:
             pass
