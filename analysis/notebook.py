@@ -9,6 +9,7 @@
 # Setup
 import functools
 import io
+import hashlib
 import json
 import mido
 import multiprocessing
@@ -26,19 +27,34 @@ import zipfile
 import os
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-# dataset_path = "/mnt/e/datasets/music/lakh_midi_v0.1/lmd_full.tar.gz"
-# dataset_name = "Lakh MIDI v0.1"
-# dataset_short = "lmd_full"
-# dataset_size = 176581
+dataset_path = "/mnt/e/datasets/music/lakh_midi_v0.1/lmd_full.tar.gz"
+dataset_name = "Lakh MIDI v0.1"
+dataset_short = "lmd_full"
+dataset_size = 176581
+sample_size = dataset_size#20000
+
 # dataset_path = "/mnt/e/datasets/music/midishrine-game-may-2023/files.zip"
 # dataset_name = "MidiShrine (May 2023)"
 # dataset_short = "msg_may2023"
 # dataset_size = 3321
-dataset_path = "/mnt/e/datasets/music/GiantMIDI-Piano/midis_v1.2.zip"
-dataset_name = "GiantMIDI Piano (v1.2)"
-dataset_short = "gmp"
-dataset_size = 10855
-sample_size = dataset_size#10000
+# sample_size = dataset_size
+
+# dataset_path = "/mnt/e/datasets/music/GiantMIDI-Piano/midis_v1.2.zip"
+# dataset_name = "GiantMIDI Piano (v1.2)"
+# dataset_short = "gmp"
+# dataset_size = 10855
+# sample_size = dataset_size
+
+file_md5s = set()
+deduplicate = False
+
+def check_dedup(filebytes: bytes):
+    if deduplicate:
+        file_md5 = hashlib.md5(filebytes[:512]).update(filebytes[-256:])  # no need to hash whole file, and this is a main-thread hot path
+        if file_md5 in file_md5s:
+            return True
+        file_md5s.add(file_md5)
+    return False
 
 if dataset_path.endswith(".tar.gz"):
     def file_generator(max: int):
@@ -46,7 +62,10 @@ if dataset_path.endswith(".tar.gz"):
         with tarfile.open(dataset_path, "r:gz") as tar:
             for member in tar:
                 if member.isfile() and member.name.endswith((".mid", ".midi")):
-                    yield tar.extractfile(member).read()
+                    filebytes = tar.extractfile(member).read()
+                    if check_dedup(filebytes):
+                        continue
+                    yield filebytes
                     count += 1
                     if count >= max:
                         break
@@ -56,11 +75,14 @@ elif dataset_path.endswith(".zip"):
         with zipfile.ZipFile(dataset_path, "r") as zip:
             for member in zip.infolist():
                 if not member.is_dir() and member.filename.endswith((".mid", ".midi")):
-                    yield zip.read(member.filename)
+                    filebytes = zip.read(member.filename)
+                    if check_dedup(filebytes):
+                        continue
+                    yield filebytes
                     count += 1
                     if count >= max:
                         break
-    
+
 def load_file(f):
     try:
         mid = mido.MidiFile(file=io.BytesIO(f))
@@ -105,13 +127,13 @@ for file_type in map_dataset(get_file_type, sample_size):
 plt.figure(figsize=(8, 6))
 labeled_types = {{0: "Single Track", 1: "Multi Track", 2: "Multi Song",}[k]: v for (k, v) in types.items() if k in [0, 1, 2]}
 plt.bar(labeled_types.keys(), labeled_types.values(), color=[mpl.cm.tab10(i) for i in range(len(labeled_types))])
-plt.title(f"MIDI File type counts\n{dataset_name}, n={sample_size:,}")
+plt.title(f"MIDI File type counts\n{dataset_name}, {'N' if sample_size==dataset_size else 'n'}={sample_size:,}")
 plt.xlabel("MIDI File type")
 plt.ylabel("Count")
 # label bars with values
 for i, v in enumerate(labeled_types.values()):
     plt.text(i, v, f"{v:,}", ha="center", va="bottom")
-plt.savefig(f"{dataset_short}_midi_file_types.png", dpi=300)
+plt.savefig(f"img/{dataset_short}/{dataset_short}_midi_file_types.png", dpi=300)
 plt.show()
 
 
@@ -156,46 +178,46 @@ drum_labels = json.load(open("drum_names.json"))
 
 # plot channel occurrences
 plt.figure(figsize=(10, 5))
-plt.title(f"Channel Occurrences\n{dataset_name}, n={sample_size:,}")
+plt.title(f"Channel Occurrences\n{dataset_name}, {'N' if sample_size==dataset_size else 'n'}={sample_size:,}")
 plt.xlabel("Channel")
 plt.ylabel("File Count")
 plt.xticks(np.arange(0, 16, 1))
 plt.bar(channel_occ_sum.keys(), channel_occ_sum.values())
-plt.savefig(f"{dataset_short}_channel_occurrences.png", dpi=300)
+plt.savefig(f"img/{dataset_short}/{dataset_short}_channel_occurrences.png", dpi=300)
 plt.show()
 
 # sort by most common, plot top with labels
 sorted_instruments_top = dict(sorted(instr_occ_sum.items(), key=lambda item: item[1], reverse=True)[:20])
 instruments_labeled = {instrument_labels[str(k+1)]: v for k, v in sorted_instruments_top.items()}
 plt.figure(figsize=(10, 5))
-plt.title(f"Most Common Instruments\n{dataset_name}, n={sample_size:,}")
+plt.title(f"Most Common Instruments\n{dataset_name}, {'N' if sample_size==dataset_size else 'n'}={sample_size:,}")
 plt.xlabel("Instrument")
 plt.ylabel("File Count")
 plt.xticks(rotation=45, ha="right")
 plt.bar(instruments_labeled.keys(), instruments_labeled.values())
-plt.savefig(f"{dataset_short}_most_common_instruments.png", dpi=300)
+plt.savefig(f"img/{dataset_short}/{dataset_short}_most_common_instruments.png", dpi=300)
 plt.show()
 
 # plot least common
 sorted_instruments_bot = dict(sorted(instr_occ_sum.items(), key=lambda item: item[1])[:20])
 instruments_labeled = {instrument_labels[str(k+1)]: v for k, v in sorted_instruments_bot.items()}
 plt.figure(figsize=(10, 5))
-plt.title(f"Least Common Instruments\n{dataset_name}, n={sample_size:,}")
+plt.title(f"Least Common Instruments\n{dataset_name}, {'N' if sample_size==dataset_size else 'n'}={sample_size:,}")
 plt.xlabel("Instrument")
 plt.ylabel("File Count")
 plt.xticks(rotation=45, ha="right")
 plt.bar(instruments_labeled.keys(), instruments_labeled.values())
-plt.savefig(f"{dataset_short}_least_common_instruments.png", dpi=300)
+plt.savefig(f"img/{dataset_short}/{dataset_short}_least_common_instruments.png", dpi=300)
 plt.show()
 
 # plot all, unlabeled, sorted by instrument number
 plt.figure(figsize=(10, 5))
-plt.title(f"Instrument Occurrences\n{dataset_name}, n={sample_size:,}")
+plt.title(f"Instrument Occurrences\n{dataset_name}, {'N' if sample_size==dataset_size else 'n'}={sample_size:,}")
 plt.xlabel("Instrument")
 plt.ylabel("File Count")
 plt.xticks(np.arange(0, 128, 8))
 plt.bar(instr_occ_sum.keys(), instr_occ_sum.values())
-plt.savefig(f"{dataset_short}_instrument_occurrences.png", dpi=300)
+plt.savefig(f"img/{dataset_short}/{dataset_short}_instrument_occurrences.png", dpi=300)
 plt.show()
 
 # plot co-occurrences. ignore lower triangle and diagonal
@@ -208,7 +230,7 @@ for i in range(128):
     for j in range(i+1):
         co_occurrences[i, j] = 0
 plt.figure(figsize=(10, 10))
-plt.title(f"Instrument Co-occurrences\n{dataset_name}, n={sample_size:,}")
+plt.title(f"Instrument Co-occurrences\n{dataset_name}, {'N' if sample_size==dataset_size else 'n'}={sample_size:,}")
 plt.xlabel("MIDI Instrument")
 plt.ylabel("MIDI Instrument")
 plt.xticks(ticks=np.arange(0-0.5, 128-0.5, 8), labels=np.arange(0, 128, 8))
@@ -219,19 +241,19 @@ cmap.set_under("white")
 cmap.set_over("purple")
 plt.imshow(co_occurrences, cmap=cmap, vmin=1, vmax=max(2, np.quantile(co_occurrences, 0.999)))
 plt.subplots_adjust(hspace=0.5)
-plt.savefig(f"{dataset_short}_instrument_co_occurrences.png", dpi=300)
+plt.savefig(f"img/{dataset_short}/{dataset_short}_instrument_co_occurrences.png", dpi=300)
 plt.show()
 
 # plot most common drums
 sorted_drums_top = dict(sorted(instr_c10_occ_sum.items(), key=lambda item: item[1], reverse=True)[:20])
 drums_labeled = {drum_labels.get(str(k+1), "Undefined"): v for k, v in sorted_drums_top.items()}
 plt.figure(figsize=(10, 5))
-plt.title(f"Most Common Drums\n{dataset_name}, n={sample_size:,}")
+plt.title(f"Most Common Drums\n{dataset_name}, {'N' if sample_size==dataset_size else 'n'}={sample_size:,}")
 plt.xlabel("Drum")
 plt.ylabel("File Count")
 plt.xticks(rotation=45, ha="right")
 plt.bar(drums_labeled.keys(), drums_labeled.values())
-plt.savefig(f"{dataset_short}_most_common_drums.png", dpi=300)
+plt.savefig(f"img/{dataset_short}/{dataset_short}_most_common_drums.png", dpi=300)
 plt.show()
 
 # plot least common drums
@@ -239,22 +261,22 @@ filtered_drums = {k: v for k, v in instr_c10_occ_sum.items() if str(k+1) in drum
 sorted_drums_bot = dict(sorted(filtered_drums.items(), key=lambda item: item[1])[:20])
 drums_labeled = {drum_labels.get(str(k+1), f"{k} (Undefined)"): v for k, v in sorted_drums_bot.items()}
 plt.figure(figsize=(10, 5))
-plt.title(f"Least Common Drums\n{dataset_name}, n={sample_size:,}")
+plt.title(f"Least Common Drums\n{dataset_name}, {'N' if sample_size==dataset_size else 'n'}={sample_size:,}")
 plt.xlabel("Drum")
 plt.ylabel("File Count")
 plt.xticks(rotation=45, ha="right")
 plt.bar(drums_labeled.keys(), drums_labeled.values())
-plt.savefig(f"{dataset_short}_least_common_drums.png", dpi=300)
+plt.savefig(f"img/{dataset_short}/{dataset_short}_least_common_drums.png", dpi=300)
 plt.show()
 
 # plot all drums, sorted by instrument number
 plt.figure(figsize=(10, 5))
-plt.title(f"Drum Occurrences\n{dataset_name}, n={sample_size:,}")
+plt.title(f"Drum Occurrences\n{dataset_name}, {'N' if sample_size==dataset_size else 'n'}={sample_size:,}")
 plt.xlabel("Drum")
 plt.ylabel("File Count")
 plt.xticks(np.arange(0, 128, 8))
 plt.bar(instr_c10_occ_sum.keys(), instr_c10_occ_sum.values())
-plt.savefig(f"{dataset_short}_drum_occurrences.png", dpi=300)
+plt.savefig(f"img/{dataset_short}/{dataset_short}_drum_occurrences.png", dpi=300)
 plt.show()
 
 
@@ -288,12 +310,12 @@ for k, v in control_changes.items():
 control_changes_labeled = {control_change_labels[str(k)]: v for k, v in control_changes_grouped.items()}
 sorted_control_changes_top = dict(sorted(control_changes_labeled.items(), key=lambda item: item[1], reverse=True)[:15])
 plt.figure(figsize=(10, 5))
-plt.title(f"Most Frequent Control Changes\n{dataset_name}, n={sample_size:,}")
+plt.title(f"Most Frequent Control Changes\n{dataset_name}, {'N' if sample_size==dataset_size else 'n'}={sample_size:,}")
 plt.xlabel("Control Change")
 plt.ylabel("Count")
 plt.xticks(rotation=45, ha="right")
 plt.bar(sorted_control_changes_top.keys(), sorted_control_changes_top.values())
-plt.savefig(f"{dataset_short}_most_common_control_changes.png", dpi=300)
+plt.savefig(f"img/{dataset_short}/{dataset_short}_most_common_control_changes.png", dpi=300)
 plt.show()
 
 # heatmap
@@ -301,7 +323,7 @@ control_changes_array = np.zeros((128, 128))
 for key, value in control_changes.items():
     control_changes_array[key] = value
 plt.figure(figsize=(10, 10))
-plt.title(f"Control Change Heatmap\n{dataset_name}, n={sample_size:,}")
+plt.title(f"Control Change Heatmap\n{dataset_name}, {'N' if sample_size==dataset_size else 'n'}={sample_size:,}")
 plt.ylabel("Control Change")
 plt.xlabel("Value")
 cmap = mpl.cm.Blues.copy()
@@ -322,58 +344,73 @@ for y in sorted_control_changes_top:
     line.set_clip_on(False)
     plt.gca().add_line(line)
 plt.subplots_adjust(hspace=0.5)
-plt.savefig(f"{dataset_short}_control_change_heatmap.png", dpi=300)
+plt.savefig(f"img/{dataset_short}/{dataset_short}_control_change_heatmap.png", dpi=300)
 plt.show()
 
 # show control changes file presence (top 15)
 control_changes_file_count_labeled = {control_change_labels[str(k)]: v for k, v in control_changes_file_count.items()}
 sorted_control_changes_file_count_top = dict(sorted(control_changes_file_count_labeled.items(), key=lambda item: item[1], reverse=True)[:15])
 plt.figure(figsize=(10, 5))
-plt.title(f"Control Changes File Presence\n{dataset_name}, n={sample_size:,}")
+plt.title(f"Control Changes File Presence\n{dataset_name}, {'N' if sample_size==dataset_size else 'n'}={sample_size:,}")
 plt.xlabel("Control Change")
 plt.ylabel("Count")
 plt.xticks(rotation=45, ha="right")
 plt.bar(sorted_control_changes_file_count_top.keys(), sorted_control_changes_file_count_top.values())
-plt.savefig(f"{dataset_short}_control_changes_file_presence.png", dpi=300)
+plt.savefig(f"img/{dataset_short}/{dataset_short}_control_changes_file_presence.png", dpi=300)
 plt.show()
 
 
 #%%
-# Count occurrences of each note per instrument
+# Count occurrences of each note per instrument, and velocity
 #sample_size = 176581
 
 note_occ_sum: Dict[Tuple[int, int], int] = {}
 note_occ_tuples = []
+vel_occ_sum: Dict[Tuple[int, int], int] = {}
+vel_occ_tuples = []
 for i in range(128):
-    for j in range(128):
+    for j in range(128*2):
         note_occ_sum[(i, j)] = 0
+        vel_occ_sum[(i, j)] = 0
 def count_file_notes(mid):
     file_notes: Dict[Tuple(int, int), int] = {}
+    file_vels: Dict[Tuple(int, int), int] = {}
     channel_program = {}
     for track in mid.tracks:
         for msg in track:
+            msg_prog = 0
             if hasattr(msg, "channel"):
-                if msg.channel == 9:
-                    continue
+                msg_prog = channel_program.get(msg.channel, 0)
+                if msg.channel == 9 and hasattr(msg, "note"):
+                    msg_prog = 128 + msg.note
             if msg.type == "program_change":
                 channel_program[msg.channel] = msg.program
             if msg.type == "note_on":
-                key = (msg.note, channel_program.get(msg.channel, 0))
+                key = (msg.note, msg_prog)
                 file_notes[key] = file_notes.get(key, 0) + 1
-    return file_notes
-for file_notes in map_dataset(count_file_notes, sample_size):
+                key = (msg.velocity, msg_prog)
+                file_vels[key] = file_vels.get(key, 0) + 1
+    return file_notes, file_vels
+for file_notes, file_vels in map_dataset(count_file_notes, sample_size):
     note_occ_tuples.append(file_notes.keys())
     for k, v in file_notes.items():
         note_occ_sum[k] += 1
+    vel_occ_tuples.append(file_vels.keys())
+    for k, v in file_vels.items():
+        vel_occ_sum[k] += 1
 
 # heatmap
 note_occ_array = np.zeros((128, 128))
+drums_occ_array = np.zeros((128, 128))
 for key, value in note_occ_sum.items():
-    note_occ_array[key] = value
+    if key[1] >= 128:
+        drums_occ_array[key[0], key[1]-128] = value
+    else:
+        note_occ_array[key] = value
 # normalize by instrument
 note_occ_array_norm = note_occ_array / np.maximum(1, np.max(note_occ_array, axis=0))
 plt.figure(figsize=(10, 10))
-plt.title(f"Note Occurrences Heatmap\n(normalized by instrument)\n{dataset_name}, n={sample_size:,}")
+plt.title(f"Note Occurrences Heatmap\n(normalized by instrument)\n{dataset_name}, {'N' if sample_size==dataset_size else 'n'}={sample_size:,}")
 plt.ylabel("Note")
 plt.xlabel("MIDI Instrument")
 plt.xticks(ticks=np.arange(0-0.5, 128-0.5, 8), labels=np.arange(0, 128, 8))
@@ -385,7 +422,49 @@ cmap.set_under("white")
 cmap.set_over("purple")
 plt.imshow(note_occ_array_norm, origin='lower', cmap=cmap, vmin=0.0000000001, vmax=np.quantile(note_occ_array_norm, 0.9999))
 plt.subplots_adjust(hspace=0.5)
-plt.savefig(f"{dataset_short}_note_occurrences_heatmap.png", dpi=300)
+plt.savefig(f"img/{dataset_short}/{dataset_short}_note_occurrences_heatmap.png", dpi=300)
+plt.show()
+
+vel_occ_array = np.zeros((128, 128))
+drum_vel_occ_array = np.zeros((128, 128))
+for key, value in vel_occ_sum.items():
+    if key[1] >= 128:
+        drum_vel_occ_array[key[0], key[1]-128] = value
+    else:
+        vel_occ_array[key] = value
+# normalize by instrument
+vel_occ_array_norm = vel_occ_array / np.maximum(1, np.max(vel_occ_array, axis=0))
+plt.figure(figsize=(10, 10))
+plt.title(f"Velocity Occurrences Heatmap\n(normalized by instrument)\n{dataset_name}, {'N' if sample_size==dataset_size else 'n'}={sample_size:,}")
+plt.ylabel("Velocity")
+plt.xlabel("MIDI Instrument")
+plt.xticks(ticks=np.arange(0-0.5, 128-0.5, 8), labels=np.arange(0, 128, 8))
+plt.yticks(ticks=np.arange(0-0.5, 128-0.5, 16), labels=np.arange(0, 128, 16))
+plt.grid(which='major', axis='y', color='blue', linestyle='-', linewidth=0.5, alpha=0.2)
+plt.grid(which='major', axis='x', color='black', linestyle='-', linewidth=0.5, alpha=0.2)
+cmap = mpl.cm.Blues.copy()
+cmap.set_under("white")
+cmap.set_over("purple")
+plt.imshow(vel_occ_array_norm, origin='lower', cmap=cmap, vmin=0.0000000001, vmax=np.quantile(vel_occ_array_norm, 0.9999))
+plt.subplots_adjust(hspace=0.5)
+plt.savefig(f"img/{dataset_short}/{dataset_short}_velocity_occurrences_heatmap.png", dpi=300)
+plt.show()
+# now for drums
+vel_occ_array_norm = drum_vel_occ_array / np.maximum(1, np.max(drum_vel_occ_array, axis=0))
+plt.figure(figsize=(10, 10))
+plt.title(f"Drum Velocity Occurrences Heatmap\n(normalized by instrument)\n{dataset_name}, {'N' if sample_size==dataset_size else 'n'}={sample_size:,}")
+plt.ylabel("Velocity")
+plt.xlabel("MIDI Drum Instrument")
+plt.xticks(ticks=np.arange(0-0.5, 128-0.5, 8), labels=np.arange(0, 128, 8))
+plt.yticks(ticks=np.arange(0-0.5, 128-0.5, 16), labels=np.arange(0, 128, 16))
+plt.grid(which='major', axis='y', color='blue', linestyle='-', linewidth=0.5, alpha=0.2)
+plt.grid(which='major', axis='x', color='black', linestyle='-', linewidth=0.5, alpha=0.2)
+cmap = mpl.cm.Blues.copy()
+cmap.set_under("white")
+cmap.set_over("purple")
+plt.imshow(vel_occ_array_norm, origin='lower', cmap=cmap, vmin=0.0000000001, vmax=np.quantile(vel_occ_array_norm, 0.9999))
+plt.subplots_adjust(hspace=0.5)
+plt.savefig(f"img/{dataset_short}/{dataset_short}_drum_velocity_occurrences_heatmap.png", dpi=300)
 plt.show()
 
 
@@ -409,10 +488,10 @@ for keys in map_dataset(count_file_meta_events, sample_size):
 # sort by most common, plot top with labels
 sorted_meta_events_top = dict(sorted(meta_events.items(), key=lambda item: item[1], reverse=True)[:15])
 plt.figure(figsize=(10, 5))
-plt.title(f"Most Frequent Meta Events\n{dataset_name}, n={sample_size:,}")
+plt.title(f"Most Frequent Meta Events\n{dataset_name}, {'N' if sample_size==dataset_size else 'n'}={sample_size:,}")
 plt.xlabel("Meta Event")
 plt.ylabel("Count")
 plt.xticks(rotation=45, ha="right")
 plt.bar(sorted_meta_events_top.keys(), sorted_meta_events_top.values())
-plt.savefig(f"{dataset_short}_meta_events.png", dpi=300)
+plt.savefig(f"img/{dataset_short}/{dataset_short}_meta_events.png", dpi=300)
 plt.show()
