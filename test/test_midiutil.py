@@ -5,11 +5,12 @@ sys.path.append(
 )
 import midi_util
 
-cfg = midi_util.VocabConfig.from_json("vocab_config.json")
+cfg = midi_util.VocabConfig.from_json("vocab_config_v2.json")
 utils = midi_util.VocabUtils(cfg)
 
-mid = mido.MidiFile("/mnt/e/datasets/music/midishrine-game-may-2023/files/Duck_Tales/the_moon.mid")
+#mid = mido.MidiFile("/mnt/e/datasets/music/midishrine-game-may-2023/files/Duck_Tales/the_moon.mid")
 #mid = mido.MidiFile("jazz.mid")
+mid = mido.MidiFile("origin.mid")
 
 out = midi_util.convert_midi_to_str(cfg, mid)
 print(out)

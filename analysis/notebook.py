@@ -27,11 +27,11 @@ import zipfile
 import os
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-dataset_path = "/mnt/e/datasets/music/lakh_midi_v0.1/lmd_full.tar.gz"
-dataset_name = "Lakh MIDI v0.1"
-dataset_short = "lmd_full"
-dataset_size = 176581
-sample_size = dataset_size#20000
+# dataset_path = "/mnt/e/datasets/music/lakh_midi_v0.1/lmd_full.tar.gz"
+# dataset_name = "Lakh MIDI v0.1"
+# dataset_short = "lmd_full"
+# dataset_size = 176581
+# sample_size = dataset_size#20000
 
 # dataset_path = "/mnt/e/datasets/music/midishrine-game-may-2023/files.zip"
 # dataset_name = "MidiShrine (May 2023)"
@@ -44,6 +44,21 @@ sample_size = dataset_size#20000
 # dataset_short = "gmp"
 # dataset_size = 10855
 # sample_size = dataset_size
+
+# dataset_path = "/mnt/e/datasets/music/los-angeles-midi/Los-Angeles-MIDI-Dataset-Ver-3-0-CC-BY-NC-SA.zip"
+# dataset_name = "Los Angeles MIDI Dataset 3.0"
+# dataset_short = "lam3"
+# dataset_size = 232000  # not exact, need more fingers to count
+# sample_size = 10000
+
+dataset_path = "/mnt/e/datasets/music/symphonynet/SymphonyNet_Dataset.tar.gz"
+dataset_name = "SymphonyNet"
+dataset_short = "sn"
+dataset_size = 46187
+sample_size = dataset_size#10000
+
+if not os.path.exists(f"img/{dataset_short}"):
+    os.mkdir(f"img/{dataset_short}")
 
 file_md5s = set()
 deduplicate = False
@@ -420,7 +435,7 @@ plt.grid(which='major', axis='x', color='black', linestyle='-', linewidth=0.5, a
 cmap = mpl.cm.Blues.copy()
 cmap.set_under("white")
 cmap.set_over("purple")
-plt.imshow(note_occ_array_norm, origin='lower', cmap=cmap, vmin=0.0000000001, vmax=np.quantile(note_occ_array_norm, 0.9999))
+plt.imshow(note_occ_array_norm, origin='lower', cmap=cmap, vmin=0.0000000001, vmax=max(0.000000001, np.quantile(note_occ_array_norm, 0.9999)))
 plt.subplots_adjust(hspace=0.5)
 plt.savefig(f"img/{dataset_short}/{dataset_short}_note_occurrences_heatmap.png", dpi=300)
 plt.show()
@@ -445,10 +460,14 @@ plt.grid(which='major', axis='x', color='black', linestyle='-', linewidth=0.5, a
 cmap = mpl.cm.Blues.copy()
 cmap.set_under("white")
 cmap.set_over("purple")
-plt.imshow(vel_occ_array_norm, origin='lower', cmap=cmap, vmin=0.0000000001, vmax=np.quantile(vel_occ_array_norm, 0.9999))
+plt.imshow(vel_occ_array_norm, origin='lower', cmap=cmap, vmin=0.0000000001, vmax=max(0.000000001, np.quantile(vel_occ_array_norm, 0.9999)))
 plt.subplots_adjust(hspace=0.5)
 plt.savefig(f"img/{dataset_short}/{dataset_short}_velocity_occurrences_heatmap.png", dpi=300)
 plt.show()
+# display quantiles for each pct
+quantiles = [(pct/100.0, np.quantile(note_occ_array_norm, pct/100.0)) for pct in range(0, 101, 1)]
+print("Velocity Occurrences Quantiles")
+print(quantiles)
 # now for drums
 vel_occ_array_norm = drum_vel_occ_array / np.maximum(1, np.max(drum_vel_occ_array, axis=0))
 plt.figure(figsize=(10, 10))
@@ -462,7 +481,7 @@ plt.grid(which='major', axis='x', color='black', linestyle='-', linewidth=0.5, a
 cmap = mpl.cm.Blues.copy()
 cmap.set_under("white")
 cmap.set_over("purple")
-plt.imshow(vel_occ_array_norm, origin='lower', cmap=cmap, vmin=0.0000000001, vmax=np.quantile(vel_occ_array_norm, 0.9999))
+plt.imshow(vel_occ_array_norm, origin='lower', cmap=cmap, vmin=0.0000000001, vmax=max(0.000000001, np.quantile(vel_occ_array_norm, 0.9999)))
 plt.subplots_adjust(hspace=0.5)
 plt.savefig(f"img/{dataset_short}/{dataset_short}_drum_velocity_occurrences_heatmap.png", dpi=300)
 plt.show()

@@ -22,6 +22,8 @@ class VocabConfig:
     velocity_bins: int
     # Exponential scaling factor for velocity bin sizes. 1.0 = linear scaling.
     velocity_exp: float
+    # Manual override for velocity bins. Each element is the max velocity value for that bin by index.
+    velocity_bins_override: Optional[List[int]]
     # Whether to sort tokens by instrument, note. This should improve data reducibility.
     do_token_sorting: bool
     # Whether tokens should be represented as combined instrument/note/velocity tokens, or separate tokens for each.
@@ -75,6 +77,10 @@ class VocabConfig:
             raise ValueError("velocity_bins must be at least 2")
         if len(self.bin_instrument_names) > 16:
             raise ValueError("bin_instruments must have at most 16 values")
+        if self.velocity_bins_override:
+            print("VocabConfig is using velocity_bins_override. Ignoring velocity_exp.")
+            if len(self.velocity_bins_override) != self.velocity_bins:
+                raise ValueError("velocity_bins_override must have same length as velocity_bins")
         if self.ch10_instrument_bin_name and self.ch10_instrument_bin_name not in self.bin_instrument_names:
             raise ValueError("ch10_instrument_bin_name must be in bin_instruments")
         if self.velocity_exp <= 0:
@@ -110,6 +116,11 @@ class VocabUtils:
 
     def velocity_to_bin(self, velocity: float) -> int:
         velocity = max(0, min(velocity, self.cfg.velocity_events - 1))
+        if self.cfg.velocity_bins_override:
+            for i, v in enumerate(self.cfg.velocity_bins_override):
+                if velocity <= v:
+                    return i
+            return 0
         binsize = self.cfg.velocity_events / (self.cfg.velocity_bins - 1)
         if self.cfg.velocity_exp == 1.0:
             return ceil(velocity / binsize)
@@ -117,6 +128,8 @@ class VocabUtils:
             return ceil((self.cfg.velocity_events*((self.cfg.velocity_exp**(velocity/self.cfg.velocity_events)-1.0) / (self.cfg.velocity_exp-1.0))) / binsize)
 
     def bin_to_velocity(self, bin: int) -> int:
+        if self.cfg.velocity_bins_override:
+            return self.cfg.velocity_bins_override[bin]
         binsize = self.cfg.velocity_events / (self.cfg.velocity_bins - 1)
         if self.cfg.velocity_exp == 1.0:
             return max(0, ceil(bin * binsize - 1))
