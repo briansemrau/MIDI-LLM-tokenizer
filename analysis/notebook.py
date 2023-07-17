@@ -20,7 +20,7 @@ import matplotlib as mpl
 from typing import List, Tuple, Dict, Optional, Union
 from tqdm import tqdm
 
-nproc = multiprocessing.cpu_count()
+nproc = max(1, multiprocessing.cpu_count() - 1)
 
 import tarfile
 import zipfile
@@ -45,17 +45,17 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 # dataset_size = 10855
 # sample_size = dataset_size
 
-# dataset_path = "/mnt/e/datasets/music/los-angeles-midi/Los-Angeles-MIDI-Dataset-Ver-3-0-CC-BY-NC-SA.zip"
-# dataset_name = "Los Angeles MIDI Dataset 3.0"
-# dataset_short = "lam3"
-# dataset_size = 232000  # not exact, need more fingers to count
-# sample_size = 10000
+dataset_path = "/mnt/e/datasets/music/los-angeles-midi/Los-Angeles-MIDI-Dataset-Ver-3-0-CC-BY-NC-SA.zip"
+dataset_name = "Los Angeles MIDI Dataset 3.0"
+dataset_short = "lam3"
+dataset_size = 232000  # not exact, need more fingers to count
+sample_size = 20000
 
-dataset_path = "/mnt/e/datasets/music/symphonynet/SymphonyNet_Dataset.tar.gz"
-dataset_name = "SymphonyNet"
-dataset_short = "sn"
-dataset_size = 46187
-sample_size = dataset_size#10000
+# dataset_path = "/mnt/e/datasets/music/symphonynet/SymphonyNet_Dataset.tar.gz"
+# dataset_name = "SymphonyNet"
+# dataset_short = "sn"
+# dataset_size = 46187
+# sample_size = dataset_size#10000
 
 if not os.path.exists(f"img/{dataset_short}"):
     os.mkdir(f"img/{dataset_short}")
