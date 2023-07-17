@@ -49,7 +49,7 @@ dataset_path = "/mnt/e/datasets/music/los-angeles-midi/Los-Angeles-MIDI-Dataset-
 dataset_name = "Los Angeles MIDI Dataset 3.0"
 dataset_short = "lam3"
 dataset_size = 232000  # not exact, need more fingers to count
-sample_size = 20000
+sample_size = 10000
 
 # dataset_path = "/mnt/e/datasets/music/symphonynet/SymphonyNet_Dataset.tar.gz"
 # dataset_name = "SymphonyNet"
@@ -464,12 +464,8 @@ plt.imshow(vel_occ_array_norm, origin='lower', cmap=cmap, vmin=0.0000000001, vma
 plt.subplots_adjust(hspace=0.5)
 plt.savefig(f"img/{dataset_short}/{dataset_short}_velocity_occurrences_heatmap.png", dpi=300)
 plt.show()
-# display quantiles for each pct
-quantiles = [(pct/100.0, np.quantile(note_occ_array_norm, pct/100.0)) for pct in range(0, 101, 1)]
-print("Velocity Occurrences Quantiles")
-print(quantiles)
 # now for drums
-vel_occ_array_norm = drum_vel_occ_array / np.maximum(1, np.max(drum_vel_occ_array, axis=0))
+drum_vel_occ_array_norm = drum_vel_occ_array / np.maximum(1, np.max(drum_vel_occ_array, axis=0))
 plt.figure(figsize=(10, 10))
 plt.title(f"Drum Velocity Occurrences Heatmap\n(normalized by instrument)\n{dataset_name}, {'N' if sample_size==dataset_size else 'n'}={sample_size:,}")
 plt.ylabel("Velocity")
@@ -481,7 +477,7 @@ plt.grid(which='major', axis='x', color='black', linestyle='-', linewidth=0.5, a
 cmap = mpl.cm.Blues.copy()
 cmap.set_under("white")
 cmap.set_over("purple")
-plt.imshow(vel_occ_array_norm, origin='lower', cmap=cmap, vmin=0.0000000001, vmax=max(0.000000001, np.quantile(vel_occ_array_norm, 0.9999)))
+plt.imshow(drum_vel_occ_array_norm, origin='lower', cmap=cmap, vmin=0.0000000001, vmax=max(0.000000001, np.quantile(drum_vel_occ_array_norm, 0.9999)))
 plt.subplots_adjust(hspace=0.5)
 plt.savefig(f"img/{dataset_short}/{dataset_short}_drum_velocity_occurrences_heatmap.png", dpi=300)
 plt.show()
