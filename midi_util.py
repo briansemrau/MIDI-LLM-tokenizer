@@ -23,7 +23,7 @@ class VocabConfig:
     # Exponential scaling factor for velocity bin sizes. 1.0 = linear scaling.
     velocity_exp: float
     # Manual override for velocity bins. Each element is the max velocity value for that bin by index.
-    velocity_bins_override: Optional[List[int]]
+    velocity_bins_override: Optional[List[int]] = None
     # Whether to sort tokens by instrument, note. This should improve data reducibility.
     do_token_sorting: bool
     # Whether tokens should be represented as combined instrument/note/velocity tokens, or separate tokens for each.
