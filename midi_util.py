@@ -22,8 +22,6 @@ class VocabConfig:
     velocity_bins: int
     # Exponential scaling factor for velocity bin sizes. 1.0 = linear scaling.
     velocity_exp: float
-    # Manual override for velocity bins. Each element is the max velocity value for that bin by index.
-    velocity_bins_override: Optional[List[int]] = None
     # Whether to sort tokens by instrument, note. This should improve data reducibility.
     do_token_sorting: bool
     # Whether tokens should be represented as combined instrument/note/velocity tokens, or separate tokens for each.
@@ -42,6 +40,8 @@ class VocabConfig:
     bin_name_to_program_name: Dict[str, str]
     # Mapping from program number to instrument name.
     instrument_names: Dict[str, str]
+    # Manual override for velocity bins. Each element is the max velocity value for that bin by index.
+    velocity_bins_override: Optional[List[int]] = None
 
     def __post_init__(self):
         self.validate()
