@@ -290,11 +290,27 @@ class AugmentConfig:
             )
 
 
+@dataclass
+class FilterConfig:
+    # Whether to filter out MIDI files with duplicate MD5 hashes.
+    deduplicate_md5: bool
+    # Minimum time delay between notes in a file before splitting into multiple documents.
+    piece_split_delay: float
+    # Minimum length of a piece in milliseconds.
+    min_piece_length: float
+
+    @classmethod
+    def from_json(cls, path: str):
+        with open(path, "r") as f:
+            config = json.load(f)
+        return cls(**config)
+
+
 def mix_volume(velocity: int, volume: int, expression: int) -> float:
     return velocity * (volume / 127.0) * (expression / 127.0)
 
 
-def convert_midi_to_str(cfg: VocabConfig, mid: mido.MidiFile, augment: AugmentValues = None) -> str:
+def convert_midi_to_str(cfg: VocabConfig, filter_cfg: FilterConfig, mid: mido.MidiFile, augment: AugmentValues = None) -> List[str]:
     utils = VocabUtils(cfg)
     if augment is None:
         augment = AugmentValues.default()
@@ -316,7 +332,9 @@ def convert_midi_to_str(cfg: VocabConfig, mid: mido.MidiFile, augment: AugmentVa
     channel_pedal_events = {i: {} for i in range(16)}  # {channel: {(note, program) -> True}}
     started_flag = False
 
+    output_list = []
     output = ["<start>"]
+    output_length_ms = 0.0
     token_data_buffer: List[Tuple[int, int, int, float]] = []  # need to sort notes between wait tokens
 
     def flush_token_data_buffer():
@@ -341,14 +359,31 @@ def convert_midi_to_str(cfg: VocabConfig, mid: mido.MidiFile, augment: AugmentVa
         token_data_buffer = []
 
     def consume_note_program_data(prog: int, chan: int, note: int, vel: float):
-        nonlocal output, started_flag, delta_time_ms, cfg, utils, token_data_buffer
+        nonlocal output, output_length_ms, started_flag, delta_time_ms, cfg, utils, token_data_buffer
         is_token_valid = utils.prog_data_to_token_data(prog, chan, note, vel) is not None
         if not is_token_valid:
             return
+        
+        if delta_time_ms > filter_cfg.piece_split_delay * 1000.0:
+            # check if any notes are still held
+            silent = True
+            for channel in channel_notes.keys():
+                if len(channel_notes[channel]) > 0:
+                    silent = False
+                    break
+            if silent:
+                flush_token_data_buffer()
+                output.append("<end>")
+                if output_length_ms > filter_cfg.min_piece_length * 1000.0:
+                    output_list.append(" ".join(output))
+                output = ["<start>"]
+                output_length_ms = 0.0
+                started_flag = False
         if started_flag:
             wait_tokens = utils.data_to_wait_tokens(delta_time_ms)
             if len(wait_tokens) > 0:
                 flush_token_data_buffer()
+                output_length_ms += delta_time_ms
                 output += wait_tokens
         delta_time_ms = 0.0
         token_data_buffer.append((prog, chan, note, vel * augment.velocity_mod_factor))
@@ -409,7 +444,9 @@ def convert_midi_to_str(cfg: VocabConfig, mid: mido.MidiFile, augment: AugmentVa
 
     flush_token_data_buffer()
     output.append("<end>")
-    return " ".join(output)
+    if output_length_ms > filter_cfg.min_piece_length * 1000.0:
+        output_list.append(" ".join(output))
+    return output_list
 
 
 def generate_program_change_messages(cfg: VocabConfig):

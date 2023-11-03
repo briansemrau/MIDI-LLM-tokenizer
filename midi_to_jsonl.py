@@ -13,10 +13,10 @@ import mido
 from tqdm import tqdm
 
 import midi_util
-from midi_util import AugmentConfig, VocabConfig
+from midi_util import AugmentConfig, VocabConfig, FilterConfig
 
 
-def convert_midi_bytes_to_str(cfg: VocabConfig, aug_cfg: AugmentConfig, data: Tuple[str, bytes]) -> Tuple[str, Union[str, List, None]]:
+def convert_midi_bytes_to_str(cfg: VocabConfig, filter_cfg: FilterConfig, aug_cfg: AugmentConfig, data: Tuple[str, bytes]) -> Tuple[str, Union[str, List, None]]:
     filename, filedata = data
     try:
         mid = mido.MidiFile(file=io.BytesIO(filedata))
@@ -28,19 +28,21 @@ def convert_midi_bytes_to_str(cfg: VocabConfig, aug_cfg: AugmentConfig, data: Tu
         return filename, None
     
     if aug_cfg is not None:
-        return filename, [midi_util.convert_midi_to_str(cfg, mid, augment) for augment in aug_cfg.get_augment_values(filename)]
+        return filename, [*(midi_util.convert_midi_to_str(cfg, filter_cfg, mid, augment) for augment in aug_cfg.get_augment_values(filename))]
 
-    return filename, midi_util.convert_midi_to_str(cfg, mid)
+    return filename, midi_util.convert_midi_to_str(cfg, filter_cfg, mid)
 
 
-def midi_to_jsonl(cfg: VocabConfig, path: str, output: str, augment_config: Optional[AugmentConfig] = None, workers: int = 1, deduplicate: bool = False):
+def midi_to_jsonl(cfg: VocabConfig, filter_cfg: FilterConfig, path: str, output: str, augment_config: Optional[AugmentConfig] = None, workers: int = 1):
     file_md5s = set()
     duplicate_file_count = 0
 
     def check_dedup(filebytes: bytes):
         nonlocal duplicate_file_count
-        if deduplicate:
-            file_md5 = hashlib.md5(filebytes[:512]).update(filebytes[-256:])  # no need to hash whole file, and this is a main-thread hot path
+        if filter_cfg.deduplicate_md5:
+            # no need to hash whole file, and this is a main-thread hot path
+            file_md5 = hashlib.md5(filebytes[:512])
+            file_md5.update(filebytes[-256:])
             if file_md5 in file_md5s:
                 duplicate_file_count += 1
                 return True
@@ -79,7 +81,7 @@ def midi_to_jsonl(cfg: VocabConfig, path: str, output: str, augment_config: Opti
 
     # write results to jsonl file
     with open(output, "w") as f, open(output + ".failed", "w") as f_failed:
-        for (filename, result) in tqdm(pool.imap(functools.partial(convert_midi_bytes_to_str, cfg, augment_config), file_generator(), chunksize=48)):
+        for (filename, result) in tqdm(pool.imap(functools.partial(convert_midi_bytes_to_str, cfg, filter_cfg, augment_config), file_generator(), chunksize=48)):
             total_file_count += 1
             if result is not None:
                 if type(result) is list:
@@ -93,7 +95,7 @@ def midi_to_jsonl(cfg: VocabConfig, path: str, output: str, augment_config: Opti
     
     total_file_count_dup = total_file_count + duplicate_file_count
 
-    if deduplicate:
+    if filter_cfg.deduplicate_md5:
         print(f"Skipped {duplicate_file_count} duplicate files ({duplicate_file_count / (total_file_count_dup) * 100:.2f}%)")
     print(f"Failed to convert {failed_file_count} files ({failed_file_count / total_file_count * 100:.2f}%)")
     if failed_file_count == 0:
@@ -121,6 +123,12 @@ if __name__ == "__main__":
         help="Path to vocab config file",
     )
     p.add_argument(
+        "--filter_config",
+        type=str,
+        default="./filter_config.json",
+        help="Path to filter config file",
+    )
+    p.add_argument(
         "--augment_config",
         type=str,
         help="Path to augment config file",
@@ -131,18 +139,14 @@ if __name__ == "__main__":
         default=1,
         help="Number of workers to use for parallel processing",
     )
-    p.add_argument(
-        "--deduplicate",
-        type=bool,
-        default=False,
-        help="Deduplicate MIDI files using their MD5 hash. (It's likely better practice to dedup the data before preprocessing it here.)",
-    )
     args = p.parse_args()
 
     cfg = VocabConfig.from_json(args.vocab_config)
+
+    filter_config = FilterConfig.from_json(args.filter_config)
 
     augment_config = None
     if args.augment_config is not None:
         augment_config = AugmentConfig.from_json(args.augment_config, cfg)
 
-    midi_to_jsonl(cfg, args.path, args.output, augment_config, args.workers, args.deduplicate)
+    midi_to_jsonl(cfg, filter_config, args.path, args.output, augment_config, args.workers)
