@@ -532,8 +532,8 @@ def token_to_midi_message(utils: VocabUtils, token: str, state: DecodeState, end
                 if utils.cfg.decode_fix_repeated_notes:
                     if (channel, note) in state.active_notes:
                         del state.active_notes[(channel, note)]
-                    yield mido.Message("note_off", note=note, time=ticks, channel=channel), state
-                    ticks = 0
+                        yield mido.Message("note_off", note=note, time=ticks, channel=channel), state
+                        ticks = 0
                 state.active_notes[(channel, note)] = state.total_time
                 yield mido.Message("note_on", note=note, velocity=velocity, time=ticks, channel=channel), state
                 return
